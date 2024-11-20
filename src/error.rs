@@ -10,6 +10,10 @@ pub enum Error {
     StateIDOverflow(usize),
     #[error("invalid sequence")]
     InvalidSeq,
+    #[error("error while compiling")]
+    CompileError,
+    #[error("invalid method: {0}")]
+    InvalidMethod(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

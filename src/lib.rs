@@ -1,42 +1,50 @@
-mod dfa;
+mod automaton;
 mod error;
 mod lexer;
-mod nfa;
 mod parser;
+mod vm;
 
 pub use error::{Error, Result};
 
+enum Regex {
+    Dfa { dfa: automaton::dfa::Dfa },
+    Vm { vm: vm::Vm },
+}
+
 pub struct RustRegex {
-    dfa: dfa::Dfa,
+    regex: Regex,
 }
 
 impl RustRegex {
-    pub fn new(input: &str) -> std::result::Result<RustRegex, String> {
+    pub fn new(input: &str, method: &'static str) -> Result<RustRegex> {
         let mut lexer = lexer::Lexer::new(input);
         let mut parser = parser::Parser::new(&mut lexer);
-        let nfa = match nfa::Nfa::new_from_node(
-            parser.parse().map_err(|e| e.to_string())?,
-            &mut nfa::NfaState::new(),
-        ) {
-            Ok(nfa) => nfa,
-            Err(e) => return Err(e.to_string()),
-        };
-        let dfa = dfa::Dfa::from_nfa(&nfa);
+        let ast = parser.parse()?;
 
-        Ok(RustRegex { dfa })
+        if method == "dfa" {
+            let nfa =
+                automaton::nfa::Nfa::new_from_node(ast, &mut automaton::nfa::NfaState::new())?;
+            let dfa = automaton::dfa::Dfa::from_nfa(&nfa);
+
+            Ok(RustRegex {
+                regex: Regex::Dfa { dfa },
+            })
+        } else if method == "vm" {
+            let vm = vm::Vm::new(ast)?;
+
+            Ok(RustRegex {
+                regex: Regex::Vm { vm },
+            })
+        } else {
+            Err(Error::InvalidMethod(method.to_string()))
+        }
     }
 
     pub fn is_match(&self, input: &str) -> bool {
-        let mut current = self.dfa.start();
-        for c in input.chars() {
-            if let Some(state) = self.dfa.next_transit(current, c) {
-                current = state;
-            } else {
-                return false;
-            }
+        match &self.regex {
+            Regex::Dfa { dfa } => dfa.is_match(input),
+            Regex::Vm { vm } => vm.is_match(input),
         }
-
-        self.dfa.accept().contains(&current)
     }
 }
 
@@ -45,73 +53,162 @@ mod tests {
     use super::*;
 
     #[test]
-    fn regex() {
-        let regex = RustRegex::new("a|b*").unwrap();
+    fn regex_dfa() {
+        let regex = RustRegex::new("a|b*", "dfa").unwrap();
         assert!(regex.is_match("a"));
         assert!(regex.is_match("b"));
         assert!(regex.is_match("bb"));
         assert!(regex.is_match("bbb"));
         assert!(!regex.is_match("c"));
 
-        let regex = RustRegex::new("a|b").unwrap();
+        let regex = RustRegex::new("a|b", "dfa").unwrap();
         assert!(regex.is_match("a"));
         assert!(regex.is_match("b"));
         assert!(!regex.is_match("c"));
 
-        let regex = RustRegex::new("a*").unwrap();
+        let regex = RustRegex::new("a*", "dfa").unwrap();
         assert!(regex.is_match(""));
         assert!(regex.is_match("a"));
         assert!(regex.is_match("aa"));
         assert!(regex.is_match("aaa"));
         assert!(!regex.is_match("b"));
 
-        let regex = RustRegex::new("(p(erl|ython|hp)|ruby)").unwrap();
+        let regex = RustRegex::new("(p(erl|ython|hp)|ruby)", "dfa").unwrap();
         assert!(regex.is_match("perl"));
         assert!(regex.is_match("python"));
         assert!(regex.is_match("php"));
         assert!(regex.is_match("ruby"));
         assert!(!regex.is_match("rust"));
 
-        let regex = RustRegex::new("a(b|)").unwrap();
+        let regex = RustRegex::new("a(b|)", "dfa").unwrap();
         assert!(regex.is_match("ab"));
         assert!(regex.is_match("a"));
         assert!(!regex.is_match("abb"));
 
-        let regex = RustRegex::new("ab(cd|)").unwrap();
+        let regex = RustRegex::new("ab(cd|)", "dfa").unwrap();
         assert!(regex.is_match("abcd"));
         assert!(regex.is_match("ab"));
         assert!(!regex.is_match("abc"));
         assert!(regex.is_match("abcd"));
+
+        let regex = RustRegex::new("a+b", "dfa").unwrap();
+        assert!(regex.is_match("ab"));
+        assert!(regex.is_match("aab"));
+        assert!(regex.is_match("aaab"));
+        assert!(!regex.is_match("a"));
     }
 
     #[test]
-    fn with_escape() {
-        let regex = RustRegex::new(r"a\|b").unwrap();
+    fn with_escape_dfa() {
+        let regex = RustRegex::new(r"a\|b", "dfa").unwrap();
         assert!(regex.is_match("a|b"));
         assert!(!regex.is_match("ab"));
 
-        let regex = RustRegex::new(r"a\*b").unwrap();
+        let regex = RustRegex::new(r"a\*b", "dfa").unwrap();
         assert!(regex.is_match("a*b"));
         assert!(!regex.is_match("ab"));
 
-        let regex = RustRegex::new(r"a\+b").unwrap();
+        let regex = RustRegex::new(r"a\+b", "dfa").unwrap();
         assert!(regex.is_match("a+b"));
         assert!(!regex.is_match("ab"));
 
-        let regex = RustRegex::new(r"a\?b").unwrap();
+        let regex = RustRegex::new(r"a\?b", "dfa").unwrap();
         assert!(regex.is_match("a?b"));
         assert!(!regex.is_match("ab"));
 
-        let regex = RustRegex::new(r"a\|b\*").unwrap();
+        let regex = RustRegex::new(r"a\|b\*", "dfa").unwrap();
         assert!(regex.is_match("a|b*"));
         assert!(!regex.is_match("ab"));
     }
 
     #[test]
-    fn invalid() {
+    fn invalid_dfa() {
         for test in ["a(b", "*", ")c", "|", "*", "+"] {
-            let regex = RustRegex::new(test);
+            let regex = RustRegex::new(test, "dfa");
             assert!(regex.is_err());
         }
+    }
+
+    #[test]
+    fn regex_vm() {
+        let regex = RustRegex::new("a|b*", "vm").unwrap();
+        assert!(regex.is_match("a"));
+        assert!(regex.is_match("b"));
+        assert!(regex.is_match("bb"));
+        assert!(regex.is_match("bbb"));
+        assert!(!regex.is_match("c"));
+
+        let regex = RustRegex::new("a|b", "vm").unwrap();
+        assert!(regex.is_match("a"));
+        assert!(regex.is_match("b"));
+        assert!(!regex.is_match("c"));
+
+        let regex = RustRegex::new("a*", "vm").unwrap();
+        assert!(regex.is_match(""));
+        assert!(regex.is_match("a"));
+        assert!(regex.is_match("aa"));
+        assert!(regex.is_match("aaa"));
+        assert!(!regex.is_match("b"));
+
+        let regex = RustRegex::new("(p(erl|ython|hp)|ruby)", "vm").unwrap();
+        assert!(regex.is_match("perl"));
+        assert!(regex.is_match("python"));
+        assert!(regex.is_match("php"));
+        assert!(regex.is_match("ruby"));
+        assert!(!regex.is_match("rust"));
+
+        let regex = RustRegex::new("a(b|)", "vm").unwrap();
+        assert!(regex.is_match("ab"));
+        assert!(regex.is_match("a"));
+        assert!(!regex.is_match("abb"));
+
+        let regex = RustRegex::new("ab(cd|)", "vm").unwrap();
+        assert!(regex.is_match("abcd"));
+        assert!(regex.is_match("ab"));
+        assert!(!regex.is_match("abc"));
+        assert!(regex.is_match("abcd"));
+
+        let regex = RustRegex::new("a+b", "vm").unwrap();
+        assert!(regex.is_match("ab"));
+        assert!(regex.is_match("aab"));
+        assert!(regex.is_match("aaab"));
+        assert!(!regex.is_match("a"));
+    }
+
+    #[test]
+    fn with_escape_vm() {
+        let regex = RustRegex::new(r"a\|b", "vm").unwrap();
+        assert!(regex.is_match("a|b"));
+        assert!(!regex.is_match("ab"));
+
+        let regex = RustRegex::new(r"a\*b", "vm").unwrap();
+        assert!(regex.is_match("a*b"));
+        assert!(!regex.is_match("ab"));
+
+        let regex = RustRegex::new(r"a\+b", "vm").unwrap();
+        assert!(regex.is_match("a+b"));
+        assert!(!regex.is_match("ab"));
+
+        let regex = RustRegex::new(r"a\?b", "vm").unwrap();
+        assert!(regex.is_match("a?b"));
+        assert!(!regex.is_match("ab"));
+
+        let regex = RustRegex::new(r"a\|b\*", "vm").unwrap();
+        assert!(regex.is_match("a|b*"));
+        assert!(!regex.is_match("ab"));
+    }
+
+    #[test]
+    fn invalid_vm() {
+        for test in ["a(b", "*", ")c", "|", "*", "+"] {
+            let regex = RustRegex::new(test, "vm");
+            assert!(regex.is_err());
+        }
+    }
+
+    #[test]
+    fn invalid_method_name() {
+        let regex = RustRegex::new("a", "正規表現太郎");
+        assert!(regex.is_err());
     }
 }

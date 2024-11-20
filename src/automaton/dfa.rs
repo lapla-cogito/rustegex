@@ -35,7 +35,7 @@ impl Dfa {
             .map(|(_, _, to)| *to)
     }
 
-    pub fn from_nfa(nfa: &crate::nfa::Nfa) -> Self {
+    pub fn from_nfa(nfa: &crate::automaton::nfa::Nfa) -> Self {
         let mut dfa_states = std::collections::BTreeMap::new();
         let mut queue = std::collections::VecDeque::new();
 
@@ -84,12 +84,24 @@ impl Dfa {
 
         dfa
     }
+
+    pub fn is_match(&self, input: &str) -> bool {
+        let mut state = self.start();
+        for c in input.chars() {
+            if let Some(next) = self.next_transit(state, c) {
+                state = next;
+            } else {
+                return false;
+            }
+        }
+        self.accept().contains(&state)
+    }
 }
 
 fn epsilon_closure(
-    nfa: &crate::nfa::Nfa,
-    start: std::collections::BTreeSet<crate::nfa::NfaStateID>,
-) -> std::collections::BTreeSet<crate::nfa::NfaStateID> {
+    nfa: &crate::automaton::nfa::Nfa,
+    start: std::collections::BTreeSet<crate::automaton::nfa::NfaStateID>,
+) -> std::collections::BTreeSet<crate::automaton::nfa::NfaStateID> {
     let mut visited = std::collections::BTreeSet::new();
     let mut to_visit = std::collections::VecDeque::new();
 
@@ -123,9 +135,9 @@ mod tests {
     fn e_closure() {
         let mut lexer = crate::lexer::Lexer::new("a|b*");
         let mut parser = crate::parser::Parser::new(&mut lexer);
-        let nfa = crate::nfa::Nfa::new_from_node(
+        let nfa = crate::automaton::nfa::Nfa::new_from_node(
             parser.parse().unwrap(),
-            &mut crate::nfa::NfaState::new(),
+            &mut crate::automaton::nfa::NfaState::new(),
         )
         .unwrap();
 
@@ -134,9 +146,9 @@ mod tests {
 
         let mut lexer = crate::lexer::Lexer::new("a|b|c");
         let mut parser = crate::parser::Parser::new(&mut lexer);
-        let nfa = crate::nfa::Nfa::new_from_node(
+        let nfa = crate::automaton::nfa::Nfa::new_from_node(
             parser.parse().unwrap(),
-            &mut crate::nfa::NfaState::new(),
+            &mut crate::automaton::nfa::NfaState::new(),
         )
         .unwrap();
 
@@ -146,9 +158,9 @@ mod tests {
 
     #[test]
     fn test_dfa_from_nfa() {
-        let nfa = crate::nfa::Nfa::new_from_node(
+        let nfa = crate::automaton::nfa::Nfa::new_from_node(
             crate::parser::AstNode::Char('a'),
-            &mut crate::nfa::NfaState::new(),
+            &mut crate::automaton::nfa::NfaState::new(),
         )
         .unwrap();
         let dfa = Dfa::from_nfa(&nfa);
@@ -162,12 +174,12 @@ mod tests {
         );
         assert_eq!(dfa.transitions(), &[(0, 'a', 1)].iter().cloned().collect());
 
-        let nfa = crate::nfa::Nfa::new_from_node(
+        let nfa = crate::automaton::nfa::Nfa::new_from_node(
             crate::parser::AstNode::Or(
                 Box::new(crate::parser::AstNode::Char('a')),
                 Box::new(crate::parser::AstNode::Char('b')),
             ),
-            &mut crate::nfa::NfaState::new(),
+            &mut crate::automaton::nfa::NfaState::new(),
         )
         .unwrap();
         let dfa = Dfa::from_nfa(&nfa);
@@ -184,14 +196,14 @@ mod tests {
             &[(0, 'a', 1), (0, 'b', 2)].iter().cloned().collect()
         );
 
-        let nfa = crate::nfa::Nfa::new_from_node(
+        let nfa = crate::automaton::nfa::Nfa::new_from_node(
             crate::parser::AstNode::Or(
                 Box::new(crate::parser::AstNode::Char('a')),
                 Box::new(crate::parser::AstNode::Star(Box::new(
                     crate::parser::AstNode::Char('b'),
                 ))),
             ),
-            &mut crate::nfa::NfaState::new(),
+            &mut crate::automaton::nfa::NfaState::new(),
         )
         .unwrap();
         let dfa = Dfa::from_nfa(&nfa);
