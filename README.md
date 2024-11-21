@@ -2,6 +2,10 @@
 
 A hobby regular expression engine in Rust.
 
+- DFA-based engine
+- VM-based engine
+    - caching
+
 ## example
 
 DFA-based:
