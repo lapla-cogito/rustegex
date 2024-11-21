@@ -1,13 +1,15 @@
-pub fn eval(
+fn _eval(
     inst: &[crate::vm::instruction::Instruction],
     input: &Vec<char>,
     mut input_looking: usize,
     mut pc: usize,
+    cache: &mut std::collections::HashSet<(usize, usize)>,
 ) -> bool {
     loop {
-        if pc >= inst.len() {
+        if pc >= inst.len() || cache.contains(&(input_looking, pc)) {
             return false;
         }
+        cache.insert((input_looking, pc));
 
         match inst[pc] {
             crate::vm::instruction::Instruction::Char(c) => {
@@ -19,7 +21,7 @@ pub fn eval(
                 pc += 1;
             }
             crate::vm::instruction::Instruction::Split(x, y) => {
-                if eval(inst, input, input_looking, x) {
+                if _eval(inst, input, input_looking, x, cache) {
                     return true;
                 }
 
@@ -31,6 +33,16 @@ pub fn eval(
             crate::vm::instruction::Instruction::Match => return input_looking == input.len(),
         }
     }
+}
+
+pub fn eval(
+    inst: &[crate::vm::instruction::Instruction],
+    input: &Vec<char>,
+    input_looking: usize,
+    pc: usize,
+) -> bool {
+    let mut cache = std::collections::HashSet::new();
+    _eval(inst, input, input_looking, pc, &mut cache)
 }
 
 #[cfg(test)]
