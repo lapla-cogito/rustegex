@@ -39,10 +39,10 @@ impl Dfa {
         let mut dfa_states = std::collections::BTreeMap::new();
         let mut queue = std::collections::VecDeque::new();
 
-        let start: std::collections::BTreeSet<_> =
-            epsilon_closure(nfa, [nfa.start()].iter().cloned().collect())
-                .into_iter()
-                .collect();
+        let start: std::collections::BTreeSet<_> = nfa
+            .epsilon_closure([nfa.start()].iter().cloned().collect())
+            .into_iter()
+            .collect();
 
         let start_id = dfa_states.len() as DfaStateID;
         dfa_states.insert(start.clone(), start_id);
@@ -62,7 +62,7 @@ impl Dfa {
                 for &state in current.iter() {
                     for &(from, label, to) in nfa.transitions() {
                         if from == state && Some(c as char) == label {
-                            next.extend(epsilon_closure(nfa, [to].iter().cloned().collect()));
+                            next.extend(nfa.epsilon_closure([to].iter().cloned().collect()));
                         }
                     }
                 }
@@ -98,35 +98,6 @@ impl Dfa {
     }
 }
 
-fn epsilon_closure(
-    nfa: &crate::automaton::nfa::Nfa,
-    start: std::collections::BTreeSet<crate::automaton::nfa::NfaStateID>,
-) -> std::collections::BTreeSet<crate::automaton::nfa::NfaStateID> {
-    let mut visited = std::collections::BTreeSet::new();
-    let mut to_visit = std::collections::VecDeque::new();
-
-    for &state in start.iter() {
-        if !visited.contains(&state) {
-            to_visit.push_back(state);
-        }
-    }
-
-    while let Some(state) = to_visit.pop_front() {
-        if visited.contains(&state) {
-            continue;
-        }
-        visited.insert(state);
-
-        for &(from, label, to) in nfa.transitions() {
-            if from == state && label.is_none() && !visited.contains(&to) {
-                to_visit.push_back(to);
-            }
-        }
-    }
-
-    visited
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,7 +112,7 @@ mod tests {
         )
         .unwrap();
 
-        let closure = epsilon_closure(&nfa, [nfa.start()].iter().cloned().collect());
+        let closure = nfa.epsilon_closure([nfa.start()].iter().cloned().collect());
         assert_eq!(closure, [0, 2, 4, 5].iter().cloned().collect());
 
         let mut lexer = crate::lexer::Lexer::new("a|b|c");
@@ -152,7 +123,7 @@ mod tests {
         )
         .unwrap();
 
-        let closure = epsilon_closure(&nfa, [nfa.start()].iter().cloned().collect());
+        let closure = nfa.epsilon_closure([nfa.start()].iter().cloned().collect());
         assert_eq!(closure, [0, 2, 4, 6, 7].iter().cloned().collect());
     }
 

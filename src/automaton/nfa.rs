@@ -171,6 +171,35 @@ impl Nfa {
             }
         }
     }
+
+    pub fn epsilon_closure(
+        &self,
+        start: std::collections::BTreeSet<crate::automaton::nfa::NfaStateID>,
+    ) -> std::collections::BTreeSet<crate::automaton::nfa::NfaStateID> {
+        let mut visited = std::collections::BTreeSet::new();
+        let mut to_visit = std::collections::VecDeque::new();
+
+        for &state in start.iter() {
+            if !visited.contains(&state) {
+                to_visit.push_back(state);
+            }
+        }
+
+        while let Some(state) = to_visit.pop_front() {
+            if visited.contains(&state) {
+                continue;
+            }
+            visited.insert(state);
+
+            for &(from, label, to) in self.transitions() {
+                if from == state && label.is_none() && !visited.contains(&to) {
+                    to_visit.push_back(to);
+                }
+            }
+        }
+
+        visited
+    }
 }
 
 #[cfg(test)]
