@@ -146,11 +146,11 @@ impl Nfa {
 
                 Ok(nfa)
             }
-            crate::parser::AstNode::Seq(nodes) => {
+            crate::parser::AstNode::Seq(left, right) => {
                 let mut remain_chain: Option<Nfa> = None;
 
-                for node in nodes.iter() {
-                    let mut remain = Nfa::new_from_node(node.clone(), state)?;
+                for node in [left, right].iter() {
+                    let mut remain = Nfa::new_from_node(*node.clone(), state)?;
                     if let Some(mut chain) = remain_chain {
                         for accept in chain.accept.iter() {
                             remain.add_epsilon_transition(*accept, remain.start);
@@ -302,10 +302,10 @@ mod tests {
 
         // ab
         let nfa = Nfa::new_from_node(
-            crate::parser::AstNode::Seq(vec![
-                crate::parser::AstNode::Char('a'),
-                crate::parser::AstNode::Char('b'),
-            ]),
+            crate::parser::AstNode::Seq(
+                Box::new(crate::parser::AstNode::Char('a')),
+                Box::new(crate::parser::AstNode::Char('b')),
+            ),
             &mut NfaState::new(),
         )
         .unwrap();

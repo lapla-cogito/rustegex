@@ -5,7 +5,7 @@ pub enum AstNode {
     Star(Box<AstNode>),
     Question(Box<AstNode>),
     Or(Box<AstNode>, Box<AstNode>),
-    Seq(Vec<AstNode>),
+    Seq(Box<AstNode>, Box<AstNode>),
     Empty,
     Epsilon,
 }
@@ -20,7 +20,9 @@ impl Clone for AstNode {
             AstNode::Or(left, right) => {
                 AstNode::Or(Box::new(*left.clone()), Box::new(*right.clone()))
             }
-            AstNode::Seq(nodes) => AstNode::Seq(nodes.clone()),
+            AstNode::Seq(left, right) => {
+                AstNode::Seq(Box::new(*left.clone()), Box::new(*right.clone()))
+            }
             AstNode::Empty => AstNode::Empty,
             AstNode::Epsilon => AstNode::Epsilon,
         }
@@ -85,10 +87,22 @@ impl Parser<'_> {
             nodes.push(self.parse_factor()?);
         }
 
-        if nodes.len() == 1 {
+        if nodes.is_empty() {
+            Ok(AstNode::Epsilon)
+        } else if nodes.len() == 1 {
             Ok(nodes.pop().unwrap())
         } else {
-            Ok(AstNode::Seq(nodes))
+            let mut iter = nodes.into_iter();
+            let left = iter.next().unwrap();
+            let right = iter.next().unwrap();
+
+            let mut ast = AstNode::Seq(Box::new(left), Box::new(right));
+
+            for node in iter {
+                ast = AstNode::Seq(Box::new(ast), Box::new(node));
+            }
+
+            Ok(ast)
         }
     }
 
@@ -193,10 +207,13 @@ mod tests {
         let mut parser = Parser::new(&mut lexer);
         assert_eq!(
             parser.parse().unwrap(),
-            AstNode::Seq(vec![
-                AstNode::Char('a'),
-                AstNode::Or(Box::new(AstNode::Char('b')), Box::new(AstNode::Char('c')))
-            ])
+            AstNode::Seq(
+                Box::new(AstNode::Char('a')),
+                Box::new(AstNode::Or(
+                    Box::new(AstNode::Char('b')),
+                    Box::new(AstNode::Char('c'))
+                ))
+            )
         );
 
         let mut lexer = crate::lexer::Lexer::new("((a|b)+)*");

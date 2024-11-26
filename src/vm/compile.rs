@@ -97,14 +97,15 @@ impl Compiler {
                     return Err(crate::error::Error::CompileError);
                 }
             }
-            crate::parser::AstNode::Seq(nodes) => {
-                if nodes.is_empty() {
+            crate::parser::AstNode::Seq(left, right) => {
+                if let (crate::parser::AstNode::Epsilon, crate::parser::AstNode::Epsilon) =
+                    (&*left, &*right)
+                {
                     return Err(crate::error::Error::CompileError);
                 }
 
-                for node in nodes {
-                    self._compile(node)?;
-                }
+                self._compile(*left)?;
+                self._compile(*right)?;
             }
             crate::parser::AstNode::Empty | crate::parser::AstNode::Epsilon => {}
         }
