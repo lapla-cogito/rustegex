@@ -73,7 +73,7 @@ impl Nfa {
 
                 Ok(nfa)
             }
-            crate::parser::AstNode::Empty => {
+            crate::parser::AstNode::Epsilon => {
                 let start = state.new_state();
                 let accept = state.new_state();
                 let mut nfa = Nfa::new(start, vec![accept]);
@@ -169,6 +169,7 @@ impl Nfa {
                     Err(crate::Error::InvalidSeq)
                 }
             }
+            crate::parser::AstNode::Empty => unreachable!(),
         }
     }
 
@@ -219,7 +220,8 @@ mod tests {
         );
 
         // [empty]
-        let nfa = Nfa::new_from_node(crate::parser::AstNode::Empty, &mut NfaState::new()).unwrap();
+        let nfa =
+            Nfa::new_from_node(crate::parser::AstNode::Epsilon, &mut NfaState::new()).unwrap();
         assert_eq!(nfa.start, 0);
         assert_eq!(nfa.accept, [1].into());
         assert_eq!(nfa.transitions, vec![(0, None, 1)].into_iter().collect());

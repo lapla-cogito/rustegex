@@ -2,9 +2,9 @@ pub type DfaStateID = u64;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dfa {
-    pub start: DfaStateID,
-    pub accepts: std::collections::HashSet<DfaStateID>,
-    pub transitions: std::collections::BTreeSet<(DfaStateID, char, DfaStateID)>,
+    start: DfaStateID,
+    accepts: std::collections::HashSet<DfaStateID>,
+    transitions: std::collections::BTreeSet<(DfaStateID, char, DfaStateID)>,
 }
 
 impl Dfa {

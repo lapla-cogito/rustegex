@@ -106,7 +106,7 @@ impl Compiler {
                     self._compile(node)?;
                 }
             }
-            crate::parser::AstNode::Empty => {}
+            crate::parser::AstNode::Empty | crate::parser::AstNode::Epsilon => {}
         }
 
         Ok(())

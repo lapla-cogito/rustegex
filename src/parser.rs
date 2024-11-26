@@ -7,6 +7,7 @@ pub enum AstNode {
     Or(Box<AstNode>, Box<AstNode>),
     Seq(Vec<AstNode>),
     Empty,
+    Epsilon,
 }
 
 impl Clone for AstNode {
@@ -21,6 +22,7 @@ impl Clone for AstNode {
             }
             AstNode::Seq(nodes) => AstNode::Seq(nodes.clone()),
             AstNode::Empty => AstNode::Empty,
+            AstNode::Epsilon => AstNode::Epsilon,
         }
     }
 }
@@ -59,7 +61,7 @@ impl Parser<'_> {
 
     fn parse_expr(&mut self) -> crate::Result<AstNode> {
         let mut ast = if self.looking == crate::lexer::Token::RightParen {
-            AstNode::Empty
+            AstNode::Epsilon
         } else {
             self.parse_term()?
         };
