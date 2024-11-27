@@ -139,6 +139,63 @@ mod tests {
     }
 
     #[test]
+    fn multibyte_dfa() {
+        let regex = RustRegex::new("あ|い*", "dfa").unwrap();
+        assert!(regex.is_match("あ"));
+        assert!(regex.is_match("い"));
+        assert!(regex.is_match("いい"));
+        assert!(regex.is_match("いいい"));
+        assert!(!regex.is_match("う"));
+
+        let regex = RustRegex::new("あ|い", "dfa").unwrap();
+        assert!(regex.is_match("あ"));
+        assert!(regex.is_match("い"));
+        assert!(!regex.is_match("う"));
+
+        let regex = RustRegex::new("い*", "dfa").unwrap();
+        assert!(regex.is_match(""));
+        assert!(regex.is_match("い"));
+        assert!(regex.is_match("いい"));
+        assert!(regex.is_match("いいい"));
+        assert!(!regex.is_match("う"));
+
+        let regex = RustRegex::new("(ぱ(あ|い|う)|え)", "dfa").unwrap();
+        assert!(regex.is_match("ぱあ"));
+        assert!(regex.is_match("ぱい"));
+        assert!(regex.is_match("ぱう"));
+        assert!(regex.is_match("え"));
+        assert!(!regex.is_match("お"));
+
+        let regex = RustRegex::new("い(あ|)", "dfa").unwrap();
+        assert!(regex.is_match("いあ"));
+        assert!(regex.is_match("い"));
+        assert!(!regex.is_match("いあい"));
+
+        let regex = RustRegex::new("いあ(うえ|)", "dfa").unwrap();
+        assert!(regex.is_match("いあうえ"));
+        assert!(regex.is_match("いあ"));
+        assert!(!regex.is_match("いあう"));
+        assert!(regex.is_match("いあうえ"));
+
+        let regex = RustRegex::new("い+あ", "dfa").unwrap();
+        assert!(regex.is_match("いあ"));
+        assert!(regex.is_match("いいあ"));
+        assert!(regex.is_match("いいいあ"));
+        assert!(!regex.is_match("い"));
+
+        let regex = RustRegex::new("正規表現(太郎|次郎)", "dfa").unwrap();
+        assert!(regex.is_match("正規表現太郎"));
+        assert!(regex.is_match("正規表現次郎"));
+        assert!(!regex.is_match("正規表現三郎"));
+
+        let regex = RustRegex::new("あい|♥", "dfa").unwrap();
+        assert!(regex.is_match("あい"));
+        assert!(regex.is_match("♥"));
+        assert!(!regex.is_match("♡"));
+        assert!(!regex.is_match("👎️"));
+    }
+
+    #[test]
     fn invalid_dfa() {
         for test in ["a(b", "*", ")c", "*", "+"] {
             let regex = RustRegex::new(test, "dfa");
@@ -216,6 +273,63 @@ mod tests {
     }
 
     #[test]
+    fn multibyte_vm() {
+        let regex = RustRegex::new("あ|い*", "vm").unwrap();
+        assert!(regex.is_match("あ"));
+        assert!(regex.is_match("い"));
+        assert!(regex.is_match("いい"));
+        assert!(regex.is_match("いいい"));
+        assert!(!regex.is_match("う"));
+
+        let regex = RustRegex::new("あ|い", "vm").unwrap();
+        assert!(regex.is_match("あ"));
+        assert!(regex.is_match("い"));
+        assert!(!regex.is_match("う"));
+
+        let regex = RustRegex::new("い*", "vm").unwrap();
+        assert!(regex.is_match(""));
+        assert!(regex.is_match("い"));
+        assert!(regex.is_match("いい"));
+        assert!(regex.is_match("いいい"));
+        assert!(!regex.is_match("う"));
+
+        let regex = RustRegex::new("(ぱ(あ|い|う)|え)", "vm").unwrap();
+        assert!(regex.is_match("ぱあ"));
+        assert!(regex.is_match("ぱい"));
+        assert!(regex.is_match("ぱう"));
+        assert!(regex.is_match("え"));
+        assert!(!regex.is_match("お"));
+
+        let regex = RustRegex::new("い(あ|)", "vm").unwrap();
+        assert!(regex.is_match("いあ"));
+        assert!(regex.is_match("い"));
+        assert!(!regex.is_match("いあい"));
+
+        let regex = RustRegex::new("いあ(うえ|)", "vm").unwrap();
+        assert!(regex.is_match("いあうえ"));
+        assert!(regex.is_match("いあ"));
+        assert!(!regex.is_match("いあう"));
+        assert!(regex.is_match("いあうえ"));
+
+        let regex = RustRegex::new("い+あ", "vm").unwrap();
+        assert!(regex.is_match("いあ"));
+        assert!(regex.is_match("いいあ"));
+        assert!(regex.is_match("いいいあ"));
+        assert!(!regex.is_match("い"));
+
+        let regex = RustRegex::new("正規表現(太郎|次郎)", "vm").unwrap();
+        assert!(regex.is_match("正規表現太郎"));
+        assert!(regex.is_match("正規表現次郎"));
+        assert!(!regex.is_match("正規表現三郎"));
+
+        let regex = RustRegex::new("あい|♥", "vm").unwrap();
+        assert!(regex.is_match("あい"));
+        assert!(regex.is_match("♥"));
+        assert!(!regex.is_match("♡"));
+        assert!(!regex.is_match("👎️"));
+    }
+
+    #[test]
     fn invalid_vm() {
         for test in ["a(b", "*", ")c", "*", "+"] {
             let regex = RustRegex::new(test, "vm");
@@ -290,6 +404,63 @@ mod tests {
         let regex = RustRegex::new(r"a\|b\*", "derivative").unwrap();
         assert!(regex.is_match("a|b*"));
         assert!(!regex.is_match("ab"));
+    }
+
+    #[test]
+    fn multibyte_derivative() {
+        let regex = RustRegex::new("あ|い*", "derivative").unwrap();
+        assert!(regex.is_match("あ"));
+        assert!(regex.is_match("い"));
+        assert!(regex.is_match("いい"));
+        assert!(regex.is_match("いいい"));
+        assert!(!regex.is_match("う"));
+
+        let regex = RustRegex::new("あ|い", "derivative").unwrap();
+        assert!(regex.is_match("あ"));
+        assert!(regex.is_match("い"));
+        assert!(!regex.is_match("う"));
+
+        let regex = RustRegex::new("い*", "derivative").unwrap();
+        assert!(regex.is_match(""));
+        assert!(regex.is_match("い"));
+        assert!(regex.is_match("いい"));
+        assert!(regex.is_match("いいい"));
+        assert!(!regex.is_match("う"));
+
+        let regex = RustRegex::new("(ぱ(あ|い|う)|え)", "derivative").unwrap();
+        assert!(regex.is_match("ぱあ"));
+        assert!(regex.is_match("ぱい"));
+        assert!(regex.is_match("ぱう"));
+        assert!(regex.is_match("え"));
+        assert!(!regex.is_match("お"));
+
+        let regex = RustRegex::new("い(あ|)", "derivative").unwrap();
+        assert!(regex.is_match("いあ"));
+        assert!(regex.is_match("い"));
+        assert!(!regex.is_match("いあい"));
+
+        let regex = RustRegex::new("いあ(うえ|)", "derivative").unwrap();
+        assert!(regex.is_match("いあうえ"));
+        assert!(regex.is_match("いあ"));
+        assert!(!regex.is_match("いあう"));
+        assert!(regex.is_match("いあうえ"));
+
+        let regex = RustRegex::new("い+あ", "derivative").unwrap();
+        assert!(regex.is_match("いあ"));
+        assert!(regex.is_match("いいあ"));
+        assert!(regex.is_match("いいいあ"));
+        assert!(!regex.is_match("い"));
+
+        let regex = RustRegex::new("正規表現(太郎|次郎)", "derivative").unwrap();
+        assert!(regex.is_match("正規表現太郎"));
+        assert!(regex.is_match("正規表現次郎"));
+        assert!(!regex.is_match("正規表現三郎"));
+
+        let regex = RustRegex::new("あい|♥", "derivative").unwrap();
+        assert!(regex.is_match("あい"));
+        assert!(regex.is_match("♥"));
+        assert!(!regex.is_match("♡"));
+        assert!(!regex.is_match("👎️"));
     }
 
     #[test]

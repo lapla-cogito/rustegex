@@ -57,11 +57,20 @@ impl Dfa {
                 dfa.accepts.insert(current_id);
             }
 
-            for c in 1..=u8::MAX {
+            let mut unique_chars = std::collections::BTreeSet::new();
+            for &(from, label, _) in nfa.transitions() {
+                if current.contains(&from) {
+                    if let Some(c) = label {
+                        unique_chars.insert(c);
+                    }
+                }
+            }
+
+            for &c in &unique_chars {
                 let mut next = std::collections::BTreeSet::new();
                 for &state in current.iter() {
                     for &(from, label, to) in nfa.transitions() {
-                        if from == state && Some(c as char) == label {
+                        if from == state && Some(c) == label {
                             next.extend(nfa.epsilon_closure([to].iter().cloned().collect()));
                         }
                     }
@@ -78,7 +87,7 @@ impl Dfa {
                 }
 
                 let next_id = dfa_states[&next];
-                dfa.transitions.insert((current_id, c as char, next_id));
+                dfa.transitions.insert((current_id, c, next_id));
             }
         }
 

@@ -2,12 +2,14 @@
 
 A hobby regular expression engine in Rust.
 
-- DFA-based engine
-    - convert regex to NFA
-    - convert NFA to DFA
-- VM-based engine
-    - caching
-- Derivative-based engine
+- supports Unicode characters
+- engines
+    - DFA-based engine
+        - convert regex to NFA
+        - convert NFA to DFA
+    - VM-based engine
+        - caching
+    - Derivative-based engine
 
 ## example
 
@@ -36,6 +38,11 @@ assert!(!regex.is_match("a"));
 let regex = RustRegex::new(r"a\|b\*", "dfa").unwrap();
 assert!(regex.is_match("a|b*"));
 assert!(!regex.is_match("ab"));
+
+let regex = RustRegex::new("正規表現(太郎|次郎)", "dfa").unwrap();
+assert!(regex.is_match("正規表現太郎"));
+assert!(regex.is_match("正規表現次郎"));
+assert!(!regex.is_match("正規表現三郎"));
 ```
 
 VM-based:
@@ -63,6 +70,11 @@ assert!(!regex.is_match("a"));
 let regex = RustRegex::new(r"a\|b\*", "vm").unwrap();
 assert!(regex.is_match("a|b*"));
 assert!(!regex.is_match("ab"));
+
+let regex = RustRegex::new("正規表現(太郎|次郎)", "vm").unwrap();
+assert!(regex.is_match("正規表現太郎"));
+assert!(regex.is_match("正規表現次郎"));
+assert!(!regex.is_match("正規表現三郎"));
 ```
 
 Derivative-based:
@@ -90,6 +102,11 @@ assert!(!regex.is_match("a"));
 let regex = RustRegex::new(r"a\|b\*", "derivative").unwrap();
 assert!(regex.is_match("a|b*"));
 assert!(!regex.is_match("ab"));
+
+let regex = RustRegex::new("正規表現(太郎|次郎)", "derivative").unwrap();
+assert!(regex.is_match("正規表現太郎"));
+assert!(regex.is_match("正規表現次郎"));
+assert!(!regex.is_match("正規表現三郎"));
 ```
 
 ## test
