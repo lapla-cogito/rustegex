@@ -1,0 +1,19 @@
+name: run benchmarks
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+        types: [opened, synchronize, reopened]
+
+jobs:
+    bench:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            - name: Setup Rust-toolchain
+              uses: dtolnay/rust-toolchain@stable
+            - name: Run bench
+              run: cargo bench
