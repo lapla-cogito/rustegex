@@ -114,3 +114,9 @@ assert!(!regex.is_match("正規表現三郎"));
 ```bash
 $ cargo test
 ```
+
+## run benchmarks
+
+```bash
+$ cargo bench
+```
