@@ -11,6 +11,7 @@ A hobby regular expression engine in Rust.
         - cache
     - Derivative-based engine
         - use Brzozowski's derivatives
+- all engines currently support `*`, `+`, `?`, `|`, `()`, and `\` (escape)
 
 ## example
 
