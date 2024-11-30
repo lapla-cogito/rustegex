@@ -3,13 +3,14 @@
 A hobby regular expression engine in Rust.
 
 - supports Unicode characters
-- engines
+- implements 3 engines:
     - DFA-based engine
         - convert regex to NFA
         - convert NFA to DFA
     - VM-based engine
-        - caching
+        - cache
     - Derivative-based engine
+        - use Brzozowski's derivatives
 
 ## example
 

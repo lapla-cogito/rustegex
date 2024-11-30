@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn multibyte_dfa() {
+    fn nonascii_dfa() {
         let regex = RustRegex::new("あ|い*", "dfa").unwrap();
         assert!(regex.is_match("あ"));
         assert!(regex.is_match("い"));
@@ -193,11 +193,20 @@ mod tests {
         assert!(regex.is_match("♥"));
         assert!(!regex.is_match("♡"));
         assert!(!regex.is_match("👎️"));
+
+        let regex = RustRegex::new("ගවයා|ng'ombe", "dfa").unwrap();
+        assert!(regex.is_match("ගවයා"));
+        assert!(regex.is_match("ng'ombe"));
+        assert!(!regex.is_match("ගවයාng'ombe"));
+
+        let regex = RustRegex::new("(පරිගණකය)*", "dfa").unwrap();
+        assert!(regex.is_match("පරිගණකය"));
+        assert!(regex.is_match(""));
     }
 
     #[test]
     fn invalid_dfa() {
-        for test in ["a(b", "*", ")c", "*", "+"] {
+        for test in ["a(b", "*", ")c", "+"] {
             let regex = RustRegex::new(test, "dfa");
             assert!(regex.is_err());
         }
@@ -273,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn multibyte_vm() {
+    fn nonascii_vm() {
         let regex = RustRegex::new("あ|い*", "vm").unwrap();
         assert!(regex.is_match("あ"));
         assert!(regex.is_match("い"));
@@ -327,11 +336,20 @@ mod tests {
         assert!(regex.is_match("♥"));
         assert!(!regex.is_match("♡"));
         assert!(!regex.is_match("👎️"));
+
+        let regex = RustRegex::new("ගවයා|ng'ombe", "vm").unwrap();
+        assert!(regex.is_match("ගවයා"));
+        assert!(regex.is_match("ng'ombe"));
+        assert!(!regex.is_match("ගවයාng'ombe"));
+
+        let regex = RustRegex::new("(පරිගණකය)*", "vm").unwrap();
+        assert!(regex.is_match("පරිගණකය"));
+        assert!(regex.is_match(""));
     }
 
     #[test]
     fn invalid_vm() {
-        for test in ["a(b", "*", ")c", "*", "+"] {
+        for test in ["a(b", "*", ")c", "+"] {
             let regex = RustRegex::new(test, "vm");
             assert!(regex.is_err());
         }
@@ -407,7 +425,7 @@ mod tests {
     }
 
     #[test]
-    fn multibyte_derivative() {
+    fn nonascii_derivative() {
         let regex = RustRegex::new("あ|い*", "derivative").unwrap();
         assert!(regex.is_match("あ"));
         assert!(regex.is_match("い"));
@@ -461,11 +479,20 @@ mod tests {
         assert!(regex.is_match("♥"));
         assert!(!regex.is_match("♡"));
         assert!(!regex.is_match("👎️"));
+
+        let regex = RustRegex::new("ගවයා|ng'ombe", "derivative").unwrap();
+        assert!(regex.is_match("ගවයා"));
+        assert!(regex.is_match("ng'ombe"));
+        assert!(!regex.is_match("ගවයාng'ombe"));
+
+        let regex = RustRegex::new("(පරිගණකය)*", "derivative").unwrap();
+        assert!(regex.is_match("පරිගණකය"));
+        assert!(regex.is_match(""));
     }
 
     #[test]
     fn invalid_derivative() {
-        for test in ["a(b", "*", ")c", "*", "+"] {
+        for test in ["a(b", "*", ")c", "+"] {
             let regex = RustRegex::new(test, "derivative");
             assert!(regex.is_err());
         }

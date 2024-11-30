@@ -103,6 +103,7 @@ impl Dfa {
                 return false;
             }
         }
+
         self.accept().contains(&state)
     }
 }
@@ -110,31 +111,6 @@ impl Dfa {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn e_closure() {
-        let mut lexer = crate::lexer::Lexer::new("a|b*");
-        let mut parser = crate::parser::Parser::new(&mut lexer);
-        let nfa = crate::automaton::nfa::Nfa::new_from_node(
-            parser.parse().unwrap(),
-            &mut crate::automaton::nfa::NfaState::new(),
-        )
-        .unwrap();
-
-        let closure = nfa.epsilon_closure([nfa.start()].iter().cloned().collect());
-        assert_eq!(closure, [0, 2, 4, 5].iter().cloned().collect());
-
-        let mut lexer = crate::lexer::Lexer::new("a|b|c");
-        let mut parser = crate::parser::Parser::new(&mut lexer);
-        let nfa = crate::automaton::nfa::Nfa::new_from_node(
-            parser.parse().unwrap(),
-            &mut crate::automaton::nfa::NfaState::new(),
-        )
-        .unwrap();
-
-        let closure = nfa.epsilon_closure([nfa.start()].iter().cloned().collect());
-        assert_eq!(closure, [0, 2, 4, 6, 7].iter().cloned().collect());
-    }
 
     #[test]
     fn test_dfa_from_nfa() {
