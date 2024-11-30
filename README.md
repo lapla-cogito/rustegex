@@ -120,3 +120,7 @@ $ cargo test
 ```bash
 $ cargo bench
 ```
+
+## license
+
+MIT
