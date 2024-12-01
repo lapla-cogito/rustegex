@@ -28,6 +28,18 @@ fn dfa_2(c: &mut criterion::Criterion) {
     });
 }
 
+fn dfa_long(c: &mut criterion::Criterion) {
+    let target_regex = "a+b";
+
+    let regex = rustegex::RustRegex::new(target_regex, "dfa").unwrap();
+
+    c.bench_function("DFA long", |b| {
+        b.iter(|| {
+            regex.is_match("a".repeat(1000000).as_str());
+        })
+    });
+}
+
 fn vm_1(c: &mut criterion::Criterion) {
     let target_regex = "(p(erl|ython|hp)|ruby)";
     let targets = vec!["perl", "python", "ruby", "rust"];
@@ -92,6 +104,7 @@ criterion::criterion_group!(
     benches,
     dfa_1,
     dfa_2,
+    dfa_long,
     vm_1,
     vm_2,
     derivative_1,
