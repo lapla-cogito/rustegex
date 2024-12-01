@@ -56,10 +56,9 @@ impl RustRegex {
             Regex::Vm { vm } => vm.is_match(input),
             Regex::Derivative { derivative } => {
                 if input.is_empty() {
-                    derivative.is_empty_match()
-                } else {
-                    derivative.is_match(input)
+                    return derivative.is_empty_match();
                 }
+                derivative.is_match(input)
             }
         }
     }
