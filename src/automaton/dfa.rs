@@ -62,7 +62,7 @@ impl Dfa {
 
         let start_id = dfa_states.len() as DfaStateID;
         dfa_states.insert(start.clone(), start_id);
-        queue.push_back(start.clone());
+        queue.push_back(start);
 
         let mut dfa = Dfa::new(start_id, std::collections::HashSet::new());
 
@@ -73,25 +73,21 @@ impl Dfa {
                 dfa.accepts.insert(current_id);
             }
 
-            let mut unique_chars = std::collections::BTreeSet::new();
-            for &(from, label, _) in nfa.transitions() {
-                if current.contains(&from) {
-                    if let Some(c) = label {
-                        unique_chars.insert(c);
+            let mut transitions_map = std::collections::BTreeMap::new();
+            for &state in &current {
+                for &(from, label, to) in nfa.transitions() {
+                    if from == state {
+                        if let Some(c) = label {
+                            transitions_map
+                                .entry(c)
+                                .or_insert_with(std::collections::BTreeSet::new)
+                                .extend(nfa.epsilon_closure([to].iter().cloned().collect()));
+                        }
                     }
                 }
             }
 
-            for &c in &unique_chars {
-                let mut next = std::collections::BTreeSet::new();
-                for &state in current.iter() {
-                    for &(from, label, to) in nfa.transitions() {
-                        if from == state && Some(c) == label {
-                            next.extend(nfa.epsilon_closure([to].iter().cloned().collect()));
-                        }
-                    }
-                }
-
+            for (c, next) in transitions_map {
                 if next.is_empty() {
                     continue;
                 }
