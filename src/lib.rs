@@ -28,7 +28,7 @@ impl RustRegex {
         if method == "dfa" {
             let nfa =
                 automaton::nfa::Nfa::new_from_node(ast, &mut automaton::nfa::NfaState::new())?;
-            let dfa = automaton::dfa::Dfa::from_nfa(&nfa);
+            let dfa = automaton::dfa::Dfa::from_nfa(&nfa, use_dfa_cache(input));
 
             Ok(RustRegex {
                 regex: Regex::Dfa { dfa },
@@ -62,6 +62,10 @@ impl RustRegex {
             }
         }
     }
+}
+
+pub fn use_dfa_cache(input: &str) -> bool {
+    input.len() > 1000
 }
 
 #[cfg(test)]

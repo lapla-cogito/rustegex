@@ -5,6 +5,7 @@ pub struct Dfa {
     start: DfaStateID,
     accepts: std::collections::HashSet<DfaStateID>,
     transitions: std::collections::BTreeSet<(DfaStateID, char, DfaStateID)>,
+    cache: std::collections::HashMap<(DfaStateID, char), DfaStateID>,
 }
 
 impl Dfa {
@@ -13,6 +14,7 @@ impl Dfa {
             start,
             accepts,
             transitions: std::collections::BTreeSet::new(),
+            cache: std::collections::HashMap::new(),
         }
     }
 
@@ -28,14 +30,28 @@ impl Dfa {
         &self.transitions
     }
 
-    pub fn next_transit(&self, current: DfaStateID, input: char) -> Option<DfaStateID> {
-        self.transitions
-            .iter()
-            .find(|(from, label, _)| *from == current && *label == input)
-            .map(|(_, _, to)| *to)
+    pub fn next_transit(
+        &self,
+        current: DfaStateID,
+        input: char,
+        use_dfa_cache: bool,
+    ) -> Option<DfaStateID> {
+        if use_dfa_cache {
+            if let Some(&next_state) = self.cache.get(&(current, input)) {
+                return Some(next_state);
+            }
+        } else {
+            return self
+                .transitions
+                .iter()
+                .find(|(from, label, _)| *from == current && *label == input)
+                .map(|(_, _, to)| *to);
+        }
+
+        None
     }
 
-    pub fn from_nfa(nfa: &crate::automaton::nfa::Nfa) -> Self {
+    pub fn from_nfa(nfa: &crate::automaton::nfa::Nfa, use_dfa_cache: bool) -> Self {
         let mut dfa_states = std::collections::BTreeMap::new();
         let mut queue = std::collections::VecDeque::new();
 
@@ -88,6 +104,9 @@ impl Dfa {
 
                 let next_id = dfa_states[&next];
                 dfa.transitions.insert((current_id, c, next_id));
+                if use_dfa_cache {
+                    dfa.cache.insert((current_id, c), next_id);
+                }
             }
         }
 
@@ -96,8 +115,9 @@ impl Dfa {
 
     pub fn is_match(&self, input: &str) -> bool {
         let mut state = self.start();
+        let use_dfa_cache = crate::use_dfa_cache(input);
         for c in input.chars() {
-            if let Some(next) = self.next_transit(state, c) {
+            if let Some(next) = self.next_transit(state, c, use_dfa_cache) {
                 state = next;
             } else {
                 return false;
@@ -119,7 +139,7 @@ mod tests {
             &mut crate::automaton::nfa::NfaState::new(),
         )
         .unwrap();
-        let dfa = Dfa::from_nfa(&nfa);
+        let dfa = Dfa::from_nfa(&nfa, false);
         assert_eq!(dfa.start(), 0);
         assert_eq!(
             dfa.accept(),
@@ -138,7 +158,7 @@ mod tests {
             &mut crate::automaton::nfa::NfaState::new(),
         )
         .unwrap();
-        let dfa = Dfa::from_nfa(&nfa);
+        let dfa = Dfa::from_nfa(&nfa, false);
         assert_eq!(dfa.start(), 0);
         assert_eq!(
             dfa.accept(),
@@ -162,7 +182,7 @@ mod tests {
             &mut crate::automaton::nfa::NfaState::new(),
         )
         .unwrap();
-        let dfa = Dfa::from_nfa(&nfa);
+        let dfa = Dfa::from_nfa(&nfa, false);
         assert_eq!(dfa.start(), 0);
         assert_eq!(
             dfa.accept(),
