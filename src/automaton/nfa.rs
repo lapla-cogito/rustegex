@@ -10,7 +10,7 @@ impl NfaState {
         NfaState { id: 0 }
     }
 
-    pub fn new_state(&mut self) -> NfaStateID {
+    fn new_state(&mut self) -> NfaStateID {
         let id = self.id;
         self.id += 1;
         id
@@ -47,11 +47,11 @@ impl Nfa {
         &self.transitions
     }
 
-    pub fn add_transition(&mut self, from: NfaStateID, char: char, to: NfaStateID) {
+    fn add_transition(&mut self, from: NfaStateID, char: char, to: NfaStateID) {
         self.transitions.insert((from, Some(char), to));
     }
 
-    pub fn add_epsilon_transition(&mut self, from: NfaStateID, to: NfaStateID) {
+    fn add_epsilon_transition(&mut self, from: NfaStateID, to: NfaStateID) {
         self.transitions.insert((from, None, to));
     }
 

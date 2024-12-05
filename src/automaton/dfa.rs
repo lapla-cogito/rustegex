@@ -40,15 +40,12 @@ impl Dfa {
             if let Some(&next_state) = self.cache.get(&(current, input)) {
                 return Some(next_state);
             }
-        } else {
-            return self
-                .transitions
-                .iter()
-                .find(|(from, label, _)| *from == current && *label == input)
-                .map(|(_, _, to)| *to);
         }
 
-        None
+        self.transitions
+            .iter()
+            .find(|(from, label, _)| *from == current && *label == input)
+            .map(|(_, _, to)| *to)
     }
 
     pub fn from_nfa(nfa: &crate::automaton::nfa::Nfa, use_dfa_cache: bool) -> Self {
