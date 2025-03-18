@@ -36,10 +36,8 @@ impl Dfa {
         input: char,
         use_dfa_cache: bool,
     ) -> Option<DfaStateID> {
-        if use_dfa_cache {
-            if let Some(&next_state) = self.cache.get(&(current, input)) {
-                return Some(next_state);
-            }
+        if use_dfa_cache && let Some(&next_state) = self.cache.get(&(current, input)) {
+            return Some(next_state);
         }
 
         self.transitions
@@ -73,13 +71,13 @@ impl Dfa {
             let mut transitions_map = std::collections::BTreeMap::new();
             for &state in &current {
                 for &(from, label, to) in nfa.transitions() {
-                    if from == state {
-                        if let Some(c) = label {
-                            transitions_map
-                                .entry(c)
-                                .or_insert_with(std::collections::BTreeSet::new)
-                                .extend(nfa.epsilon_closure([to].iter().cloned().collect()));
-                        }
+                    if from == state
+                        && let Some(c) = label
+                    {
+                        transitions_map
+                            .entry(c)
+                            .or_insert_with(std::collections::BTreeSet::new)
+                            .extend(nfa.epsilon_closure([to].iter().cloned().collect()));
                     }
                 }
             }

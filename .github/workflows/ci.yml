@@ -13,13 +13,13 @@ jobs:
     
         steps:
           - name: Checkout
-            uses: actions/checkout@v4    
+            uses: actions/checkout@v4
           - name: Cache cargo
             uses: ./.github/actions/cache_cargo
           - name: build
             run: cargo build
 
-    cargo-fmt:
+    check-fmt:
         needs: build-cache
         runs-on: ubuntu-latest
         steps:
@@ -34,7 +34,7 @@ jobs:
             - name: Run rustfmt
               run: cargo fmt --all -- --check
 
-    cargo-test:
+    lint-and-test:
         needs: build-cache
         runs-on: ubuntu-latest
         steps:
