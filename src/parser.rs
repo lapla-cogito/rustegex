@@ -80,10 +80,12 @@ impl Parser<'_> {
     fn parse_term(&mut self) -> crate::Result<AstNode> {
         let mut nodes = vec![];
 
-        while self.looking != crate::lexer::Token::RightParen
-            && self.looking != crate::lexer::Token::UnionOperator
-            && self.looking != crate::lexer::Token::Empty
-        {
+        while !matches!(
+            self.looking,
+            crate::lexer::Token::RightParen
+                | crate::lexer::Token::UnionOperator
+                | crate::lexer::Token::Empty
+        ) {
             nodes.push(self.parse_factor()?);
         }
 

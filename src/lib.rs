@@ -1,3 +1,5 @@
+#![feature(let_chains)]
+
 mod automaton;
 mod derivative;
 mod error;
