@@ -14,7 +14,7 @@ impl Derivative {
     }
 
     pub fn is_empty_match(&self) -> bool {
-        is_contain_epsilon(&self.ast)
+        contain_epsilon(&self.ast)
     }
 }
 
@@ -23,7 +23,7 @@ fn _match(ast: &mut crate::parser::AstNode, input: &str) -> bool {
         *ast = derivative(ast, c);
     }
 
-    is_contain_epsilon(ast)
+    contain_epsilon(ast)
 }
 
 fn derivative(ast: &crate::parser::AstNode, c: char) -> crate::parser::AstNode {
@@ -77,26 +77,22 @@ fn derivative(ast: &crate::parser::AstNode, c: char) -> crate::parser::AstNode {
 }
 
 fn delta(ast: &crate::parser::AstNode) -> crate::parser::AstNode {
-    if is_contain_epsilon(ast) {
+    if contain_epsilon(ast) {
         crate::parser::AstNode::Epsilon
     } else {
         crate::parser::AstNode::Empty
     }
 }
 
-fn is_contain_epsilon(ast: &crate::parser::AstNode) -> bool {
+fn contain_epsilon(ast: &crate::parser::AstNode) -> bool {
     match ast {
         crate::parser::AstNode::Empty => false,
         crate::parser::AstNode::Epsilon => true,
         crate::parser::AstNode::Char(_) => false,
-        crate::parser::AstNode::Plus(inner) => is_contain_epsilon(inner),
+        crate::parser::AstNode::Plus(inner) => contain_epsilon(inner),
         crate::parser::AstNode::Star(_) => true,
         crate::parser::AstNode::Question(_) => true,
-        crate::parser::AstNode::Or(left, right) => {
-            is_contain_epsilon(left) || is_contain_epsilon(right)
-        }
-        crate::parser::AstNode::Seq(left, right) => {
-            is_contain_epsilon(left) && is_contain_epsilon(right)
-        }
+        crate::parser::AstNode::Or(left, right) => contain_epsilon(left) || contain_epsilon(right),
+        crate::parser::AstNode::Seq(left, right) => contain_epsilon(left) && contain_epsilon(right),
     }
 }
