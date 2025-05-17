@@ -43,7 +43,7 @@ impl Lexer<'_> {
 impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Token::Character(c) => write!(f, "{}", c),
+            Token::Character(c) => write!(f, "{c}"),
             Token::UnionOperator => write!(f, "|"),
             Token::StarOperator => write!(f, "*"),
             Token::PlusOperator => write!(f, "+"),
