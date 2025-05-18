@@ -27,28 +27,31 @@ impl RustRegex {
         let mut parser = parser::Parser::new(&mut lexer);
         let ast = parser.parse()?;
 
-        if method == "dfa" {
-            let nfa =
-                automaton::nfa::Nfa::new_from_node(ast, &mut automaton::nfa::NfaState::new())?;
-            let dfa = automaton::dfa::Dfa::from_nfa(&nfa, use_dfa_cache(input));
+        match method {
+            "dfa" => {
+                let nfa =
+                    automaton::nfa::Nfa::new_from_node(ast, &mut automaton::nfa::NfaState::new())?;
+                let dfa = automaton::dfa::Dfa::from_nfa(&nfa, use_dfa_cache(input));
 
-            Ok(RustRegex {
-                regex: Regex::Dfa { dfa },
-            })
-        } else if method == "vm" {
-            let vm = vm::Vm::new(ast)?;
+                Ok(RustRegex {
+                    regex: Regex::Dfa { dfa },
+                })
+            }
+            "vm" => {
+                let vm = vm::Vm::new(ast)?;
 
-            Ok(RustRegex {
-                regex: Regex::Vm { vm },
-            })
-        } else if method == "derivative" {
-            let derivative = derivative::Derivative::new(ast);
+                Ok(RustRegex {
+                    regex: Regex::Vm { vm },
+                })
+            }
+            "derivative" => {
+                let derivative = derivative::Derivative::new(ast);
 
-            Ok(RustRegex {
-                regex: Regex::Derivative { derivative },
-            })
-        } else {
-            Err(Error::InvalidMethod(method.to_string()))
+                Ok(RustRegex {
+                    regex: Regex::Derivative { derivative },
+                })
+            }
+            _ => Err(Error::InvalidMethod(method.to_string())),
         }
     }
 
