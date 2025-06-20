@@ -173,30 +173,41 @@ impl Nfa {
         }
     }
 
-    pub fn epsilon_closure(
-        &self,
-        start: std::collections::BTreeSet<NfaStateID>,
-    ) -> std::collections::BTreeSet<NfaStateID> {
-        let mut visited = std::collections::HashSet::new();
+    pub fn epsilon_closure_with_bitset(&self, start: &bit_set::BitSet) -> bit_set::BitSet {
+        let mut visited = bit_set::BitSet::new();
         let mut to_visit = std::collections::VecDeque::new();
 
-        for &state in start.iter() {
-            if !visited.contains(&state) {
-                to_visit.push_back(state);
+        for state in start.iter() {
+            if !visited.contains(state) {
+                to_visit.push_back(state as NfaStateID);
             }
         }
 
         while let Some(state) = to_visit.pop_front() {
-            if visited.insert(state) {
+            if !visited.contains(state as usize) {
+                visited.insert(state as usize);
                 for &(from, label, to) in self.transitions() {
-                    if from == state && label.is_none() && !visited.contains(&to) {
+                    if from == state && label.is_none() && !visited.contains(to as usize) {
                         to_visit.push_back(to);
                     }
                 }
             }
         }
 
-        visited.into_iter().collect()
+        visited
+    }
+
+    pub fn epsilon_closure(
+        &self,
+        start: std::collections::BTreeSet<NfaStateID>,
+    ) -> std::collections::BTreeSet<NfaStateID> {
+        let mut bit_start = bit_set::BitSet::new();
+        for &state in &start {
+            bit_start.insert(state as usize);
+        }
+
+        let bit_result = self.epsilon_closure_with_bitset(&bit_start);
+        bit_result.iter().map(|s| s as NfaStateID).collect()
     }
 }
 

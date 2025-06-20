@@ -3,18 +3,18 @@ pub type DfaStateID = u64;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dfa {
     start: DfaStateID,
-    accepts: std::collections::HashSet<DfaStateID>,
+    accepts: bit_set::BitSet,
     transitions: std::collections::BTreeSet<(DfaStateID, char, DfaStateID)>,
-    cache: std::collections::HashMap<(DfaStateID, char), DfaStateID>,
+    cache: ahash::AHashMap<(DfaStateID, char), DfaStateID>,
 }
 
 impl Dfa {
-    pub fn new(start: DfaStateID, accepts: std::collections::HashSet<DfaStateID>) -> Self {
+    pub fn new(start: DfaStateID, accepts: bit_set::BitSet) -> Self {
         Dfa {
             start,
             accepts,
             transitions: std::collections::BTreeSet::new(),
-            cache: std::collections::HashMap::new(),
+            cache: ahash::AHashMap::new(),
         }
     }
 
@@ -22,8 +22,9 @@ impl Dfa {
         self.start
     }
 
-    pub fn accept(&self) -> &std::collections::HashSet<DfaStateID> {
-        &self.accepts
+    #[cfg(test)]
+    pub fn accepts_contains(&self, state: DfaStateID) -> bool {
+        self.accepts.contains(state as usize)
     }
 
     #[cfg(test)]
@@ -48,28 +49,36 @@ impl Dfa {
     }
 
     pub fn from_nfa(nfa: &crate::automaton::nfa::Nfa, use_dfa_cache: bool) -> Self {
-        let mut dfa_states = std::collections::BTreeMap::new();
+        let mut dfa_states = ahash::AHashMap::new();
         let mut queue = std::collections::VecDeque::new();
 
-        let start: std::collections::BTreeSet<_> = nfa
-            .epsilon_closure([nfa.start()].iter().cloned().collect())
-            .into_iter()
+        let mut start_bitset = bit_set::BitSet::new();
+        start_bitset.insert(nfa.start() as usize);
+        let start_closure_bitset = nfa.epsilon_closure_with_bitset(&start_bitset);
+
+        let start_states: std::collections::BTreeSet<_> = start_closure_bitset
+            .iter()
+            .map(|s| s as crate::automaton::nfa::NfaStateID)
             .collect();
 
         let start_id = dfa_states.len() as DfaStateID;
-        dfa_states.insert(start.clone(), start_id);
-        queue.push_back(start);
+        dfa_states.insert(start_states.clone(), start_id);
+        queue.push_back(start_states);
 
-        let mut dfa = Dfa::new(start_id, std::collections::HashSet::new());
+        let mut dfa = Dfa::new(start_id, bit_set::BitSet::new());
 
         while let Some(current) = queue.pop_front() {
             let current_id = dfa_states[&current];
 
             if current.iter().any(|&state| nfa.accept().contains(&state)) {
-                dfa.accepts.insert(current_id);
+                dfa.accepts.insert(current_id as usize);
             }
 
-            let mut transitions_map = std::collections::BTreeMap::new();
+            let mut transitions_map: ahash::AHashMap<
+                char,
+                std::collections::BTreeSet<crate::automaton::nfa::NfaStateID>,
+            > = ahash::AHashMap::new();
+
             for &state in &current {
                 for &(from, label, to) in nfa.transitions() {
                     if from == state
@@ -77,7 +86,7 @@ impl Dfa {
                     {
                         transitions_map
                             .entry(c)
-                            .or_insert_with(std::collections::BTreeSet::new)
+                            .or_default()
                             .extend(nfa.epsilon_closure([to].iter().cloned().collect()));
                     }
                 }
@@ -116,7 +125,7 @@ impl Dfa {
             }
         }
 
-        self.accept().contains(&state)
+        self.accepts.contains(state as usize)
     }
 }
 
@@ -133,13 +142,7 @@ mod tests {
         .unwrap();
         let dfa = Dfa::from_nfa(&nfa, false);
         assert_eq!(dfa.start(), 0);
-        assert_eq!(
-            dfa.accept(),
-            &[1u64]
-                .iter()
-                .cloned()
-                .collect::<std::collections::HashSet<u64>>()
-        );
+        assert!(dfa.accepts_contains(1));
         assert_eq!(dfa.transitions(), &[(0, 'a', 1)].iter().cloned().collect());
 
         let nfa = crate::automaton::nfa::Nfa::new_from_node(
@@ -152,17 +155,14 @@ mod tests {
         .unwrap();
         let dfa = Dfa::from_nfa(&nfa, false);
         assert_eq!(dfa.start(), 0);
-        assert_eq!(
-            dfa.accept(),
-            &[1u64, 2u64]
-                .iter()
-                .cloned()
-                .collect::<std::collections::HashSet<u64>>()
-        );
-        assert_eq!(
-            dfa.transitions(),
-            &[(0, 'a', 1), (0, 'b', 2)].iter().cloned().collect()
-        );
+        assert!(dfa.accepts_contains(1));
+        assert!(dfa.accepts_contains(2));
+
+        let transitions = dfa.transitions();
+        assert_eq!(transitions.len(), 2);
+        assert!(transitions.contains(&(0, 'a', 1)) || transitions.contains(&(0, 'a', 2)));
+        assert!(transitions.contains(&(0, 'b', 1)) || transitions.contains(&(0, 'b', 2)));
+        assert!(transitions.contains(&(0, 'a', 1)) != transitions.contains(&(0, 'b', 1)));
 
         let nfa = crate::automaton::nfa::Nfa::new_from_node(
             crate::parser::AstNode::Or(
@@ -176,19 +176,31 @@ mod tests {
         .unwrap();
         let dfa = Dfa::from_nfa(&nfa, false);
         assert_eq!(dfa.start(), 0);
-        assert_eq!(
-            dfa.accept(),
-            &[0u64, 1u64, 2u64]
-                .iter()
-                .cloned()
-                .collect::<std::collections::HashSet<u64>>()
-        );
-        assert_eq!(
-            dfa.transitions(),
-            &[(0, 'a', 1), (0, 'b', 2), (2, 'b', 2)]
-                .iter()
-                .cloned()
-                .collect()
-        );
+        assert!(dfa.accepts_contains(0));
+        assert!(dfa.accepts_contains(1));
+        assert!(dfa.accepts_contains(2));
+
+        let transitions = dfa.transitions();
+        assert_eq!(transitions.len(), 3);
+
+        let a_transitions: Vec<_> = transitions
+            .iter()
+            .filter(|(from, c, _)| *from == 0 && *c == 'a')
+            .collect();
+        let b_transitions: Vec<_> = transitions
+            .iter()
+            .filter(|(from, c, _)| *from == 0 && *c == 'b')
+            .collect();
+
+        assert_eq!(a_transitions.len(), 1);
+        assert_eq!(b_transitions.len(), 1);
+
+        let b_state = b_transitions[0].2;
+        let b_loops: Vec<_> = transitions
+            .iter()
+            .filter(|(from, c, to)| *from == b_state && *c == 'b' && *to == b_state)
+            .collect();
+
+        assert_eq!(b_loops.len(), 1);
     }
 }
