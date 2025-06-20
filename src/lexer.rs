@@ -16,7 +16,7 @@ pub struct Lexer<'a> {
 }
 
 impl Lexer<'_> {
-    pub fn new(string: &str) -> Lexer {
+    pub fn new(string: &'_ str) -> Lexer<'_> {
         Lexer {
             input: string.chars(),
         }

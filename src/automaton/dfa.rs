@@ -26,6 +26,7 @@ impl Dfa {
         &self.accepts
     }
 
+    #[cfg(test)]
     pub fn transitions(&self) -> &std::collections::BTreeSet<(DfaStateID, char, DfaStateID)> {
         &self.transitions
     }
