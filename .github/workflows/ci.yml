@@ -1,4 +1,4 @@
-name: CI for rustregex
+name: CI for rustegex
 
 on:
     push:
@@ -10,7 +10,6 @@ on:
 jobs:
     build-cache:
         runs-on: ubuntu-latest
-    
         steps:
           - name: Checkout
             uses: actions/checkout@v4
@@ -26,7 +25,7 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
             - name: Setup Rust-toolchain
-              uses: dtolnay/rust-toolchain@stable
+              uses: dtolnay/rust-toolchain@nightly
               with:
                 components: rustfmt
             - name: Cache cargo
@@ -41,7 +40,7 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
             - name: Setup Rust-toolchain
-              uses: dtolnay/rust-toolchain@stable
+              uses: dtolnay/rust-toolchain@nightly
               with:
                 components: clippy
             - name: Cache cargo
