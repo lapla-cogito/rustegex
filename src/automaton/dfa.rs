@@ -1,3 +1,5 @@
+use foldhash::HashMapExt as _;
+
 pub type DfaStateID = u64;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -5,7 +7,7 @@ pub struct Dfa {
     start: DfaStateID,
     accepts: bit_set::BitSet,
     transitions: std::collections::BTreeSet<(DfaStateID, char, DfaStateID)>,
-    cache: ahash::AHashMap<(DfaStateID, char), DfaStateID>,
+    cache: foldhash::HashMap<(DfaStateID, char), DfaStateID>,
 }
 
 impl Dfa {
@@ -14,7 +16,7 @@ impl Dfa {
             start,
             accepts,
             transitions: std::collections::BTreeSet::new(),
-            cache: ahash::AHashMap::new(),
+            cache: foldhash::HashMap::new(),
         }
     }
 
@@ -49,7 +51,7 @@ impl Dfa {
     }
 
     pub fn from_nfa(nfa: &crate::automaton::nfa::Nfa, use_dfa_cache: bool) -> Self {
-        let mut dfa_states = ahash::AHashMap::new();
+        let mut dfa_states = foldhash::HashMap::new();
         let mut queue = std::collections::VecDeque::new();
 
         let mut start_bitset = bit_set::BitSet::new();
@@ -74,10 +76,10 @@ impl Dfa {
                 dfa.accepts.insert(current_id as usize);
             }
 
-            let mut transitions_map: ahash::AHashMap<
+            let mut transitions_map: foldhash::HashMap<
                 char,
                 std::collections::BTreeSet<crate::automaton::nfa::NfaStateID>,
-            > = ahash::AHashMap::new();
+            > = foldhash::HashMap::new();
 
             for &state in &current {
                 for &(from, label, to) in nfa.transitions() {
