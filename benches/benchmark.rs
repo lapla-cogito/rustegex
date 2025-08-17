@@ -100,6 +100,18 @@ fn derivative_2(c: &mut criterion::Criterion) {
     });
 }
 
+fn derivative_long(c: &mut criterion::Criterion) {
+    let target_regex = "a+b";
+
+    let regex = rustegex::RustRegex::new(target_regex, "derivative").unwrap();
+
+    c.bench_function("Derivative long", |b| {
+        b.iter(|| {
+            regex.is_match("a".repeat(1000000).as_str());
+        })
+    });
+}
+
 criterion::criterion_group!(
     benches,
     dfa_1,
@@ -108,6 +120,7 @@ criterion::criterion_group!(
     vm_1,
     vm_2,
     derivative_1,
-    derivative_2
+    derivative_2,
+    derivative_long
 );
 criterion::criterion_main!(benches);
