@@ -1,3 +1,4 @@
+mod cache;
 mod compile;
 mod eval;
 mod instruction;
