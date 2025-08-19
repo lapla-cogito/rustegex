@@ -3,13 +3,13 @@ fn _eval(
     input: &Vec<char>,
     mut input_looking: usize,
     mut pc: usize,
-    cache: &mut std::collections::HashSet<(usize, usize)>,
+    cache: &mut super::cache::Cache,
 ) -> bool {
     loop {
-        if pc >= inst.len() || cache.contains(&(input_looking, pc)) {
+        if pc >= inst.len() || cache.contains(input_looking, pc) {
             return false;
         }
-        cache.insert((input_looking, pc));
+        cache.insert(input_looking, pc);
 
         match inst[pc] {
             crate::vm::instruction::Instruction::Char(c) => {
@@ -41,8 +41,12 @@ pub fn eval(
     input_looking: usize,
     pc: usize,
 ) -> bool {
-    let mut cache = std::collections::HashSet::new();
-    _eval(inst, input, input_looking, pc, &mut cache)
+    let program_size = inst.len();
+    let input_size = input.len();
+
+    super::cache::with_thread_cache(program_size, input_size, |cache| {
+        _eval(inst, input, input_looking, pc, cache)
+    })
 }
 
 #[cfg(test)]
