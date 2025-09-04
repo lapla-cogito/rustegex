@@ -31,6 +31,7 @@ impl Cache {
         }
     }
 
+    #[inline]
     pub fn contains(&self, input_pos: usize, pc: usize) -> bool {
         match self {
             Cache::Bitmap(cache) => cache.contains(input_pos, pc),
@@ -38,6 +39,7 @@ impl Cache {
         }
     }
 
+    #[inline]
     pub fn insert(&mut self, input_pos: usize, pc: usize) {
         match self {
             Cache::Bitmap(cache) => cache.insert(input_pos, pc),
