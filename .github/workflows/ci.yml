@@ -12,7 +12,7 @@ jobs:
         runs-on: ubuntu-latest
         steps:
           - name: Checkout
-            uses: actions/checkout@v5
+            uses: actions/checkout@v6
           - name: Cache cargo
             uses: ./.github/actions/cache_cargo
           - name: build
@@ -23,7 +23,7 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
-              uses: actions/checkout@v5
+              uses: actions/checkout@v6
             - name: Setup Rust-toolchain
               uses: dtolnay/rust-toolchain@nightly
               with:
@@ -38,7 +38,7 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
-              uses: actions/checkout@v5
+              uses: actions/checkout@v6
             - name: Setup Rust-toolchain
               uses: dtolnay/rust-toolchain@nightly
               with:
