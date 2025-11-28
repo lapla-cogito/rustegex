@@ -2,7 +2,7 @@ fn dfa_1(c: &mut criterion::Criterion) {
     let target_regex = "(p(erl|ython|hp)|ruby)";
     let targets = vec!["perl", "python", "ruby", "rust"];
 
-    let regex = rustegex::RustRegex::new(target_regex, "dfa").unwrap();
+    let regex = rustegex::Engine::new(target_regex, "dfa").unwrap();
 
     c.bench_function("DFA 1", |b| {
         b.iter(|| {
@@ -17,7 +17,7 @@ fn dfa_2(c: &mut criterion::Criterion) {
     let target_regex = "ab(cd|)ef|g*|h+";
     let targets = vec!["abcdef", "abef", "abefg", "abefgh", "", "ggggg", "hhhh"];
 
-    let regex = rustegex::RustRegex::new(target_regex, "dfa").unwrap();
+    let regex = rustegex::Engine::new(target_regex, "dfa").unwrap();
 
     c.bench_function("DFA 2", |b| {
         b.iter(|| {
@@ -31,7 +31,7 @@ fn dfa_2(c: &mut criterion::Criterion) {
 fn dfa_long(c: &mut criterion::Criterion) {
     let target_regex = "a+b";
 
-    let regex = rustegex::RustRegex::new(target_regex, "dfa").unwrap();
+    let regex = rustegex::Engine::new(target_regex, "dfa").unwrap();
 
     c.bench_function("DFA long", |b| {
         b.iter(|| {
@@ -44,7 +44,7 @@ fn vm_1(c: &mut criterion::Criterion) {
     let target_regex = "(p(erl|ython|hp)|ruby)";
     let targets = vec!["perl", "python", "ruby", "rust"];
 
-    let regex = rustegex::RustRegex::new(target_regex, "vm").unwrap();
+    let regex = rustegex::Engine::new(target_regex, "vm").unwrap();
 
     c.bench_function("VM 1", |b| {
         b.iter(|| {
@@ -59,7 +59,7 @@ fn vm_2(c: &mut criterion::Criterion) {
     let target_regex = "ab(cd|)ef|g*|h+";
     let targets = vec!["abcdef", "abef", "abefg", "abefgh", "", "ggggg", "hhhh"];
 
-    let regex = rustegex::RustRegex::new(target_regex, "vm").unwrap();
+    let regex = rustegex::Engine::new(target_regex, "vm").unwrap();
 
     c.bench_function("VM 2", |b| {
         b.iter(|| {
@@ -73,7 +73,7 @@ fn vm_2(c: &mut criterion::Criterion) {
 fn vm_long(c: &mut criterion::Criterion) {
     let target_regex = "a+b";
 
-    let regex = rustegex::RustRegex::new(target_regex, "vm").unwrap();
+    let regex = rustegex::Engine::new(target_regex, "vm").unwrap();
 
     c.bench_function("VM long", |b| {
         b.iter(|| {
@@ -86,7 +86,7 @@ fn derivative_1(c: &mut criterion::Criterion) {
     let target_regex = "(p(erl|ython|hp)|ruby)";
     let targets = vec!["perl", "python", "ruby", "rust"];
 
-    let regex = rustegex::RustRegex::new(target_regex, "derivative").unwrap();
+    let regex = rustegex::Engine::new(target_regex, "derivative").unwrap();
 
     c.bench_function("Derivative 1", |b| {
         b.iter(|| {
@@ -101,7 +101,7 @@ fn derivative_2(c: &mut criterion::Criterion) {
     let target_regex = "ab(cd|)ef|g*|h+";
     let targets = vec!["abcdef", "abef", "abefg", "abefgh", "", "ggggg", "hhhh"];
 
-    let regex = rustegex::RustRegex::new(target_regex, "derivative").unwrap();
+    let regex = rustegex::Engine::new(target_regex, "derivative").unwrap();
 
     c.bench_function("Derivative 2", |b| {
         b.iter(|| {
@@ -115,7 +115,7 @@ fn derivative_2(c: &mut criterion::Criterion) {
 fn derivative_long(c: &mut criterion::Criterion) {
     let target_regex = "a+b";
 
-    let regex = rustegex::RustRegex::new(target_regex, "derivative").unwrap();
+    let regex = rustegex::Engine::new(target_regex, "derivative").unwrap();
 
     c.bench_function("Derivative long", |b| {
         b.iter(|| {
