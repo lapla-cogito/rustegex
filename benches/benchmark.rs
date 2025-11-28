@@ -70,6 +70,18 @@ fn vm_2(c: &mut criterion::Criterion) {
     });
 }
 
+fn vm_long(c: &mut criterion::Criterion) {
+    let target_regex = "a+b";
+
+    let regex = rustegex::RustRegex::new(target_regex, "vm").unwrap();
+
+    c.bench_function("VM long", |b| {
+        b.iter(|| {
+            regex.is_match("a".repeat(1000000).as_str());
+        })
+    });
+}
+
 fn derivative_1(c: &mut criterion::Criterion) {
     let target_regex = "(p(erl|ython|hp)|ruby)";
     let targets = vec!["perl", "python", "ruby", "rust"];
@@ -119,6 +131,7 @@ criterion::criterion_group!(
     dfa_long,
     vm_1,
     vm_2,
+    vm_long,
     derivative_1,
     derivative_2,
     derivative_long

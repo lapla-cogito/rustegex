@@ -19,7 +19,6 @@ impl Vm {
     }
 
     pub fn is_match(&self, input: &str) -> bool {
-        let input: Vec<char> = input.chars().collect();
-        eval::eval(&self.bytecode, &input, 0, 0)
+        eval::eval(&self.bytecode, input, 0, 0)
     }
 }

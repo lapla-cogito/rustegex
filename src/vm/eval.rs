@@ -1,43 +1,70 @@
 fn _eval(
     inst: &[crate::vm::instruction::Instruction],
-    input: &Vec<char>,
+    input: &str,
     mut input_looking: usize,
     mut pc: usize,
     cache: &mut super::cache::Cache,
 ) -> bool {
+    let mut stack = Vec::new();
+
     loop {
-        if pc >= inst.len() || cache.contains(input_looking, pc) {
-            return false;
+        loop {
+            if pc >= inst.len() || cache.contains(input_looking, pc) {
+                break;
+            }
+            cache.insert(input_looking, pc);
+
+            match inst[pc] {
+                crate::vm::instruction::Instruction::Char(c) => {
+                    if input_looking >= input.len() {
+                        break;
+                    }
+
+                    if c.is_ascii() {
+                        if input.as_bytes()[input_looking] == c as u8 {
+                            input_looking += 1;
+                            pc += 1;
+                        } else {
+                            break;
+                        }
+                    } else {
+                        let ch = input[input_looking..].chars().next().unwrap();
+                        if ch == c {
+                            input_looking += ch.len_utf8();
+                            pc += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                crate::vm::instruction::Instruction::Split(x, y) => {
+                    stack.push((y, input_looking));
+                    pc = x;
+                }
+                crate::vm::instruction::Instruction::Jmp(x) => {
+                    pc = x;
+                }
+                crate::vm::instruction::Instruction::Match => {
+                    if input_looking == input.len() {
+                        return true;
+                    }
+                    break;
+                }
+            }
         }
-        cache.insert(input_looking, pc);
 
-        match inst[pc] {
-            crate::vm::instruction::Instruction::Char(c) => {
-                if input_looking >= input.len() || input[input_looking] != c {
-                    return false;
-                }
-
-                input_looking += 1;
-                pc += 1;
-            }
-            crate::vm::instruction::Instruction::Split(x, y) => {
-                if _eval(inst, input, input_looking, x, cache) {
-                    return true;
-                }
-
-                pc = y;
-            }
-            crate::vm::instruction::Instruction::Jmp(x) => {
-                pc = x;
-            }
-            crate::vm::instruction::Instruction::Match => return input_looking == input.len(),
+        if let Some((next_pc, next_input_looking)) = stack.pop() {
+            pc = next_pc;
+            input_looking = next_input_looking;
+        } else {
+            return false;
         }
     }
 }
 
 pub fn eval(
     inst: &[crate::vm::instruction::Instruction],
-    input: &Vec<char>,
+    input: &str,
     input_looking: usize,
     pc: usize,
 ) -> bool {
@@ -61,10 +88,10 @@ mod tests {
         let mut compiler = crate::vm::compile::Compiler::new();
         compiler.compile(ast).unwrap();
         let inst = compiler.instructions().to_vec();
-        assert!(eval(&inst.to_vec(), &"a".chars().collect(), 0, 0));
-        assert!(eval(&inst.to_vec(), &"b".chars().collect(), 0, 0));
-        assert!(eval(&inst.to_vec(), &"bb".chars().collect(), 0, 0));
-        assert!(!eval(&inst.to_vec(), &"c".chars().collect(), 0, 0));
+        assert!(eval(&inst, "a", 0, 0));
+        assert!(eval(&inst, "b", 0, 0));
+        assert!(eval(&inst, "bb", 0, 0));
+        assert!(!eval(&inst, "c", 0, 0));
 
         let mut lexer = crate::lexer::Lexer::new("a|b+");
         let mut parser = crate::parser::Parser::new(&mut lexer);
@@ -72,10 +99,10 @@ mod tests {
         let mut compiler = crate::vm::compile::Compiler::new();
         compiler.compile(ast).unwrap();
         let inst = compiler.instructions().to_vec();
-        assert!(eval(&inst.to_vec(), &"a".chars().collect(), 0, 0));
-        assert!(eval(&inst.to_vec(), &"b".chars().collect(), 0, 0));
-        assert!(eval(&inst.to_vec(), &"bb".chars().collect(), 0, 0));
-        assert!(!eval(&inst.to_vec(), &"c".chars().collect(), 0, 0));
+        assert!(eval(&inst, "a", 0, 0));
+        assert!(eval(&inst, "b", 0, 0));
+        assert!(eval(&inst, "bb", 0, 0));
+        assert!(!eval(&inst, "c", 0, 0));
 
         let mut lexer = crate::lexer::Lexer::new("a|b?");
         let mut parser = crate::parser::Parser::new(&mut lexer);
@@ -83,9 +110,9 @@ mod tests {
         let mut compiler = crate::vm::compile::Compiler::new();
         compiler.compile(ast).unwrap();
         let inst = compiler.instructions().to_vec();
-        assert!(eval(&inst.to_vec(), &"a".chars().collect(), 0, 0));
-        assert!(eval(&inst.to_vec(), &"b".chars().collect(), 0, 0));
-        assert!(!eval(&inst.to_vec(), &"bb".chars().collect(), 0, 0));
-        assert!(!eval(&inst.to_vec(), &"c".chars().collect(), 0, 0));
+        assert!(eval(&inst, "a", 0, 0));
+        assert!(eval(&inst, "b", 0, 0));
+        assert!(!eval(&inst, "bb", 0, 0));
+        assert!(!eval(&inst, "c", 0, 0));
     }
 }

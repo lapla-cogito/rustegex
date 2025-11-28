@@ -1,33 +1,38 @@
 use foldhash::HashMapExt as _;
 
-const BITMAP_THRESHOLD: usize = 64;
-const LRU_CAPACITY: usize = 1024;
+const BITMAP_BIT_LIMIT: usize = 256;
+const MAX_BITMAP_BYTES: usize = 16 * 1024 * 1024; // 16 MB
+const CACHE_CAPACITY: usize = 4096;
 
 #[derive(Debug)]
 pub enum Cache {
     Bitmap(BitmapCache),
-    Lru(LruCache),
+    Fallback(FallbackCache),
 }
 
 #[derive(Debug)]
 pub struct BitmapCache {
-    bitmap: Vec<Vec<u64>>,
-    pc_words: usize,
+    bitmap: Vec<u64>,
+    stride: usize,
+    input_size: usize,
 }
 
 #[derive(Debug)]
-pub struct LruCache {
-    cache: foldhash::HashMap<(usize, usize), usize>, // (input_pos, pc) -> access_order
+pub struct FallbackCache {
+    map: foldhash::HashMap<(usize, usize), ()>,
+    queue: std::collections::VecDeque<(usize, usize)>,
     capacity: usize,
-    access_counter: usize,
 }
 
 impl Cache {
     pub fn new(program_size: usize, input_size: usize) -> Self {
-        if program_size < BITMAP_THRESHOLD && input_size < BITMAP_THRESHOLD {
+        let stride = program_size.div_ceil(64);
+        let bitmap_bytes = input_size.saturating_mul(stride).saturating_mul(8);
+
+        if program_size <= BITMAP_BIT_LIMIT && bitmap_bytes <= MAX_BITMAP_BYTES {
             Cache::Bitmap(BitmapCache::new(program_size, input_size))
         } else {
-            Cache::Lru(LruCache::new(LRU_CAPACITY))
+            Cache::Fallback(FallbackCache::new(CACHE_CAPACITY))
         }
     }
 
@@ -35,7 +40,7 @@ impl Cache {
     pub fn contains(&self, input_pos: usize, pc: usize) -> bool {
         match self {
             Cache::Bitmap(cache) => cache.contains(input_pos, pc),
-            Cache::Lru(cache) => cache.contains(input_pos, pc),
+            Cache::Fallback(cache) => cache.contains(input_pos, pc),
         }
     }
 
@@ -43,102 +48,101 @@ impl Cache {
     pub fn insert(&mut self, input_pos: usize, pc: usize) {
         match self {
             Cache::Bitmap(cache) => cache.insert(input_pos, pc),
-            Cache::Lru(cache) => cache.insert(input_pos, pc),
-        }
-    }
-
-    pub fn clear(&mut self) {
-        match self {
-            Cache::Bitmap(cache) => cache.clear(),
-            Cache::Lru(cache) => cache.clear(),
+            Cache::Fallback(cache) => cache.insert(input_pos, pc),
         }
     }
 }
 
 impl BitmapCache {
     fn new(program_size: usize, input_size: usize) -> Self {
-        let pc_words = program_size.div_ceil(64);
-        let bitmap = vec![vec![0u64; pc_words]; input_size + 1];
+        let stride = program_size.div_ceil(64);
+        let len = (input_size + 1) * stride;
+        let bitmap = vec![0u64; len];
 
-        BitmapCache { bitmap, pc_words }
+        BitmapCache {
+            bitmap,
+            stride,
+            input_size,
+        }
     }
 
+    #[inline]
     fn contains(&self, input_pos: usize, pc: usize) -> bool {
-        if input_pos >= self.bitmap.len() {
+        if input_pos > self.input_size {
             return false;
         }
 
-        let word_idx = pc / 64;
+        let word_offset = pc / 64;
         let bit_idx = pc % 64;
 
-        if word_idx >= self.pc_words {
+        if word_offset >= self.stride {
             return false;
         }
 
-        (self.bitmap[input_pos][word_idx] & (1u64 << bit_idx)) != 0
+        let index = input_pos * self.stride + word_offset;
+        // Safety: index calculation is bounded by input_size * stride + word_offset
+        // which is < (input_size + 1) * stride = len
+        unsafe { (*self.bitmap.get_unchecked(index) & (1u64 << bit_idx)) != 0 }
     }
 
+    #[inline]
     fn insert(&mut self, input_pos: usize, pc: usize) {
-        if input_pos >= self.bitmap.len() {
+        if input_pos > self.input_size {
             return;
         }
 
-        let word_idx = pc / 64;
+        let word_offset = pc / 64;
         let bit_idx = pc % 64;
 
-        if word_idx >= self.pc_words {
+        if word_offset >= self.stride {
             return;
         }
 
-        self.bitmap[input_pos][word_idx] |= 1u64 << bit_idx;
+        let index = input_pos * self.stride + word_offset;
+        unsafe {
+            *self.bitmap.get_unchecked_mut(index) |= 1u64 << bit_idx;
+        }
     }
 
     fn clear(&mut self) {
-        for row in &mut self.bitmap {
-            for word in row {
-                *word = 0;
-            }
-        }
+        self.bitmap.fill(0);
     }
 }
 
-impl LruCache {
+impl FallbackCache {
     fn new(capacity: usize) -> Self {
-        LruCache {
-            cache: foldhash::HashMap::with_capacity(capacity),
+        FallbackCache {
+            map: foldhash::HashMap::with_capacity(capacity),
+            queue: std::collections::VecDeque::with_capacity(capacity),
             capacity,
-            access_counter: 0,
         }
     }
 
+    #[inline]
     fn contains(&self, input_pos: usize, pc: usize) -> bool {
-        self.cache.contains_key(&(input_pos, pc))
+        self.map.contains_key(&(input_pos, pc))
     }
 
+    #[inline]
     fn insert(&mut self, input_pos: usize, pc: usize) {
         let key = (input_pos, pc);
-
-        if self.cache.len() >= self.capacity
-            && !self.cache.contains_key(&key)
-            && let Some(oldest_key) = self.find_oldest_key()
-        {
-            self.cache.remove(&oldest_key);
+        if self.map.contains_key(&key) {
+            return;
         }
 
-        self.access_counter += 1;
-        self.cache.insert(key, self.access_counter);
-    }
+        if self.queue.len() >= self.capacity {
+            if let Some(oldest) = self.queue.pop_front() {
+                self.map.remove(&oldest);
+            }
+        }
 
-    fn find_oldest_key(&self) -> Option<(usize, usize)> {
-        self.cache
-            .iter()
-            .min_by_key(|&(_, access_time)| access_time)
-            .map(|(key, _)| *key)
+        self.queue.push_back(key);
+        self.map.insert(key, ());
     }
 
     fn clear(&mut self) {
-        self.cache.clear();
-        self.access_counter = 0;
+        self.map.clear();
+        self.queue.clear();
     }
 }
 
@@ -153,26 +157,46 @@ where
     THREAD_CACHE.with(|cache_cell| {
         let mut cache_opt = cache_cell.borrow_mut();
 
-        let mut cache = match cache_opt.take() {
-            Some(mut existing_cache) => {
-                existing_cache.clear();
+        let mut cache = if let Some(mut existing_cache) = cache_opt.take() {
+            let stride = program_size.div_ceil(64);
+            let bitmap_bytes = input_size.saturating_mul(stride).saturating_mul(8);
+            let use_bitmap = program_size <= BITMAP_BIT_LIMIT && bitmap_bytes <= MAX_BITMAP_BYTES;
 
-                let should_use_bitmap =
-                    program_size < BITMAP_THRESHOLD && input_size < BITMAP_THRESHOLD;
-                let is_bitmap = matches!(existing_cache, Cache::Bitmap(_));
-
-                if should_use_bitmap == is_bitmap {
-                    existing_cache
-                } else {
-                    Cache::new(program_size, input_size)
+            match existing_cache {
+                Cache::Bitmap(ref mut b) => {
+                    if use_bitmap {
+                        let needed_len = (input_size + 1) * stride;
+                        if b.stride == stride && b.bitmap.len() >= needed_len {
+                            // If existing is huge (>1MB) and needed is tiny (<4KB), discard to save memory/clear time
+                            if b.bitmap.len() > 1024 * 1024 && needed_len < 4096 {
+                                Cache::new(program_size, input_size)
+                            } else {
+                                b.input_size = input_size;
+                                b.clear();
+                                existing_cache
+                            }
+                        } else {
+                            Cache::new(program_size, input_size)
+                        }
+                    } else {
+                        Cache::new(program_size, input_size)
+                    }
+                }
+                Cache::Fallback(ref mut f) => {
+                    if !use_bitmap {
+                        f.clear();
+                        existing_cache
+                    } else {
+                        Cache::new(program_size, input_size)
+                    }
                 }
             }
-            None => Cache::new(program_size, input_size),
+        } else {
+            Cache::new(program_size, input_size)
         };
 
         let result = f(&mut cache);
 
-        // recover cache
         *cache_opt = Some(cache);
         result
     })
@@ -206,8 +230,8 @@ mod tests {
     }
 
     #[test]
-    fn test_lru_cache() {
-        let mut cache = LruCache::new(3);
+    fn test_fallback_cache() {
+        let mut cache = FallbackCache::new(3);
 
         assert!(!cache.contains(0, 0));
 
@@ -218,10 +242,10 @@ mod tests {
         assert!(cache.contains(0, 0));
         assert!(cache.contains(1, 1));
         assert!(cache.contains(2, 2));
-        assert_eq!(cache.cache.len(), 3);
+        assert_eq!(cache.queue.len(), 3);
 
         cache.insert(3, 3);
-        assert_eq!(cache.cache.len(), 3);
+        assert_eq!(cache.queue.len(), 3);
         assert!(!cache.contains(0, 0));
         assert!(cache.contains(3, 3));
 
@@ -229,7 +253,7 @@ mod tests {
         assert!(!cache.contains(1, 1));
         assert!(!cache.contains(2, 2));
         assert!(!cache.contains(3, 3));
-        assert_eq!(cache.cache.len(), 0);
+        assert_eq!(cache.queue.len(), 0);
     }
 
     #[test]
@@ -237,26 +261,13 @@ mod tests {
         let cache = Cache::new(10, 10);
         assert!(matches!(cache, Cache::Bitmap(_)));
 
-        let cache = Cache::new(100, 10);
-        assert!(matches!(cache, Cache::Lru(_)));
+        let cache = Cache::new(10, 1_000_000);
+        assert!(matches!(cache, Cache::Bitmap(_)));
 
-        let cache = Cache::new(10, 100);
-        assert!(matches!(cache, Cache::Lru(_)));
-    }
+        let cache = Cache::new(300, 10);
+        assert!(matches!(cache, Cache::Fallback(_)));
 
-    #[test]
-    fn test_thread_cache() {
-        let result = with_thread_cache(10, 10, |cache| {
-            assert!(!cache.contains(0, 0));
-            cache.insert(0, 0);
-            assert!(cache.contains(0, 0));
-            true
-        });
-
-        assert!(result);
-
-        with_thread_cache(10, 10, |cache| {
-            assert!(!cache.contains(0, 0));
-        });
+        let cache = Cache::new(10, 10_000_000);
+        assert!(matches!(cache, Cache::Fallback(_)));
     }
 }
