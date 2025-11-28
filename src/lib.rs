@@ -7,6 +7,9 @@ mod vm;
 
 pub use error::{Error, Result};
 
+#[global_allocator]
+static MIMALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[derive(Debug)]
 enum Regex {
     Dfa { dfa: automaton::dfa::Dfa },
