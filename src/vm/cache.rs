@@ -130,10 +130,10 @@ impl FallbackCache {
             return;
         }
 
-        if self.queue.len() >= self.capacity {
-            if let Some(oldest) = self.queue.pop_front() {
-                self.map.remove(&oldest);
-            }
+        if self.queue.len() >= self.capacity
+            && let Some(oldest) = self.queue.pop_front()
+        {
+            self.map.remove(&oldest);
         }
 
         self.queue.push_back(key);
