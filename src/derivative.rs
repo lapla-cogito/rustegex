@@ -1,9 +1,4 @@
-use crate::parser::AstNode;
-use foldhash::HashMap;
 use foldhash::HashMapExt as _;
-use std::cell::RefCell;
-use std::collections::HashSet;
-use std::fmt;
 
 const DEFAULT_MAX_AST_SIZE: usize = 1000;
 
@@ -31,7 +26,7 @@ enum NodeKind {
 
 struct AstArena {
     nodes: Vec<NodeKind>,
-    interner: HashMap<NodeKind, AstId>,
+    interner: foldhash::HashMap<NodeKind, AstId>,
     empty: AstId,
     epsilon: AstId,
 }
@@ -40,7 +35,7 @@ impl AstArena {
     fn new() -> Self {
         let mut arena = AstArena {
             nodes: Vec::new(),
-            interner: HashMap::new(),
+            interner: foldhash::HashMap::new(),
             empty: AstId(0),
             epsilon: AstId(0),
         };
@@ -83,39 +78,43 @@ impl AstArena {
         id
     }
 
-    fn export(&self, id: AstId) -> AstNode {
+    fn export(&self, id: AstId) -> crate::parser::AstNode {
         match self.kind(id) {
-            NodeKind::Empty => AstNode::Empty,
-            NodeKind::Epsilon => AstNode::Epsilon,
-            NodeKind::Char(c) => AstNode::Char(*c),
-            NodeKind::Plus(inner) => AstNode::Plus(Box::new(self.export(*inner))),
-            NodeKind::Star(inner) => AstNode::Star(Box::new(self.export(*inner))),
-            NodeKind::Question(inner) => AstNode::Question(Box::new(self.export(*inner))),
-            NodeKind::Or(left, right) => {
-                AstNode::Or(Box::new(self.export(*left)), Box::new(self.export(*right)))
+            NodeKind::Empty => crate::parser::AstNode::Empty,
+            NodeKind::Epsilon => crate::parser::AstNode::Epsilon,
+            NodeKind::Char(c) => crate::parser::AstNode::Char(*c),
+            NodeKind::Plus(inner) => crate::parser::AstNode::Plus(Box::new(self.export(*inner))),
+            NodeKind::Star(inner) => crate::parser::AstNode::Star(Box::new(self.export(*inner))),
+            NodeKind::Question(inner) => {
+                crate::parser::AstNode::Question(Box::new(self.export(*inner)))
             }
-            NodeKind::Seq(left, right) => {
-                AstNode::Seq(Box::new(self.export(*left)), Box::new(self.export(*right)))
-            }
+            NodeKind::Or(left, right) => crate::parser::AstNode::Or(
+                Box::new(self.export(*left)),
+                Box::new(self.export(*right)),
+            ),
+            NodeKind::Seq(left, right) => crate::parser::AstNode::Seq(
+                Box::new(self.export(*left)),
+                Box::new(self.export(*right)),
+            ),
         }
     }
 }
 
 pub struct Derivative {
-    arena: RefCell<AstArena>,
+    arena: std::cell::RefCell<AstArena>,
     start: AstId,
-    canonical: AstNode,
+    canonical: crate::parser::AstNode,
     max_ast_size: usize,
 }
 
 impl Derivative {
-    pub fn new(ast: AstNode) -> Self {
+    pub fn new(ast: crate::parser::AstNode) -> Self {
         let mut arena = AstArena::new();
         let start = from_parser(&mut arena, &ast);
         let canonical = arena.export(start);
 
         Derivative {
-            arena: RefCell::new(arena),
+            arena: std::cell::RefCell::new(arena),
             start,
             canonical,
             max_ast_size: DEFAULT_MAX_AST_SIZE,
@@ -124,7 +123,7 @@ impl Derivative {
 
     pub fn is_match(&self, input: &str) -> bool {
         let mut arena = self.arena.borrow_mut();
-        let mut memo: HashMap<(AstId, char), AstId> = HashMap::new();
+        let mut memo: foldhash::HashMap<(AstId, char), AstId> = foldhash::HashMap::new();
         let mut state = self.start;
 
         for ch in input.chars() {
@@ -152,8 +151,8 @@ impl Clone for Derivative {
     }
 }
 
-impl fmt::Debug for Derivative {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Debug for Derivative {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Derivative")
             .field("ast", &self.canonical)
             .field("max_ast_size", &self.max_ast_size)
@@ -169,29 +168,29 @@ impl PartialEq for Derivative {
 
 impl Eq for Derivative {}
 
-fn from_parser(arena: &mut AstArena, node: &AstNode) -> AstId {
+fn from_parser(arena: &mut AstArena, node: &crate::parser::AstNode) -> AstId {
     match node {
-        AstNode::Empty => arena.empty(),
-        AstNode::Epsilon => arena.epsilon(),
-        AstNode::Char(c) => mk_char(arena, *c),
-        AstNode::Plus(inner) => {
+        crate::parser::AstNode::Empty => arena.empty(),
+        crate::parser::AstNode::Epsilon => arena.epsilon(),
+        crate::parser::AstNode::Char(c) => mk_char(arena, *c),
+        crate::parser::AstNode::Plus(inner) => {
             let inner_id = from_parser(arena, inner);
             mk_plus(arena, inner_id)
         }
-        AstNode::Star(inner) => {
+        crate::parser::AstNode::Star(inner) => {
             let inner_id = from_parser(arena, inner);
             mk_star(arena, inner_id)
         }
-        AstNode::Question(inner) => {
+        crate::parser::AstNode::Question(inner) => {
             let inner_id = from_parser(arena, inner);
             mk_question(arena, inner_id)
         }
-        AstNode::Or(left, right) => {
+        crate::parser::AstNode::Or(left, right) => {
             let left_id = from_parser(arena, left);
             let right_id = from_parser(arena, right);
             mk_or(arena, left_id, right_id)
         }
-        AstNode::Seq(left, right) => {
+        crate::parser::AstNode::Seq(left, right) => {
             let left_id = from_parser(arena, left);
             let right_id = from_parser(arena, right);
             mk_seq(arena, left_id, right_id)
@@ -203,7 +202,7 @@ fn derivative_with_cache(
     arena: &mut AstArena,
     id: AstId,
     c: char,
-    memo: &mut HashMap<(AstId, char), AstId>,
+    memo: &mut foldhash::HashMap<(AstId, char), AstId>,
 ) -> AstId {
     if let Some(&cached) = memo.get(&(id, c)) {
         return cached;
@@ -262,7 +261,7 @@ fn delta_id(arena: &AstArena, id: AstId) -> AstId {
 }
 
 fn contains_epsilon_id(arena: &AstArena, id: AstId) -> bool {
-    fn helper(arena: &AstArena, id: AstId, memo: &mut HashMap<AstId, bool>) -> bool {
+    fn helper(arena: &AstArena, id: AstId, memo: &mut foldhash::HashMap<AstId, bool>) -> bool {
         if let Some(&value) = memo.get(&id) {
             return value;
         }
@@ -282,12 +281,12 @@ fn contains_epsilon_id(arena: &AstArena, id: AstId) -> bool {
         value
     }
 
-    let mut memo = HashMap::new();
+    let mut memo = foldhash::HashMap::new();
     helper(arena, id, &mut memo)
 }
 
 fn structural_size(arena: &AstArena, root: AstId) -> usize {
-    fn dfs(arena: &AstArena, id: AstId, visited: &mut HashSet<AstId>) {
+    fn dfs(arena: &AstArena, id: AstId, visited: &mut std::collections::HashSet<AstId>) {
         if !visited.insert(id) {
             return;
         }
@@ -304,7 +303,7 @@ fn structural_size(arena: &AstArena, root: AstId) -> usize {
         }
     }
 
-    let mut visited = HashSet::new();
+    let mut visited = std::collections::HashSet::new();
     dfs(arena, root, &mut visited);
     visited.len()
 }
@@ -367,7 +366,7 @@ fn ordered_pair(a: AstId, b: AstId) -> (AstId, AstId) {
     if a > b { (b, a) } else { (a, b) }
 }
 
-fn match_fallback(original: &AstNode, input: &str) -> bool {
+fn match_fallback(original: &crate::parser::AstNode, input: &str) -> bool {
     let mut ast = original.clone();
     for ch in input.chars() {
         ast = derivative_parser(&ast, ch);
@@ -375,35 +374,37 @@ fn match_fallback(original: &AstNode, input: &str) -> bool {
     contain_epsilon_parser(&ast)
 }
 
-fn derivative_parser(ast: &AstNode, c: char) -> AstNode {
+fn derivative_parser(ast: &crate::parser::AstNode, c: char) -> crate::parser::AstNode {
     let raw = match ast {
-        AstNode::Empty | AstNode::Epsilon => AstNode::Empty,
-        AstNode::Char(ch) => {
+        crate::parser::AstNode::Empty | crate::parser::AstNode::Epsilon => {
+            crate::parser::AstNode::Empty
+        }
+        crate::parser::AstNode::Char(ch) => {
             if *ch == c {
-                AstNode::Epsilon
+                crate::parser::AstNode::Epsilon
             } else {
-                AstNode::Empty
+                crate::parser::AstNode::Empty
             }
         }
-        AstNode::Plus(inner) => AstNode::Seq(
+        crate::parser::AstNode::Plus(inner) => crate::parser::AstNode::Seq(
             Box::new(derivative_parser(inner, c)),
-            Box::new(AstNode::Star(inner.clone())),
+            Box::new(crate::parser::AstNode::Star(inner.clone())),
         ),
-        AstNode::Star(inner) => AstNode::Seq(
+        crate::parser::AstNode::Star(inner) => crate::parser::AstNode::Seq(
             Box::new(derivative_parser(inner, c)),
-            Box::new(AstNode::Star(inner.clone())),
+            Box::new(crate::parser::AstNode::Star(inner.clone())),
         ),
-        AstNode::Question(inner) => derivative_parser(inner, c),
-        AstNode::Or(left, right) => AstNode::Or(
+        crate::parser::AstNode::Question(inner) => derivative_parser(inner, c),
+        crate::parser::AstNode::Or(left, right) => crate::parser::AstNode::Or(
             Box::new(derivative_parser(left, c)),
             Box::new(derivative_parser(right, c)),
         ),
-        AstNode::Seq(left, right) => AstNode::Or(
-            Box::new(AstNode::Seq(
+        crate::parser::AstNode::Seq(left, right) => crate::parser::AstNode::Or(
+            Box::new(crate::parser::AstNode::Seq(
                 Box::new(derivative_parser(left, c)),
                 Box::new((**right).clone()),
             )),
-            Box::new(AstNode::Seq(
+            Box::new(crate::parser::AstNode::Seq(
                 Box::new(delta_parser(left)),
                 Box::new(derivative_parser(right, c)),
             )),
@@ -413,82 +414,92 @@ fn derivative_parser(ast: &AstNode, c: char) -> AstNode {
     normalize_parser(raw)
 }
 
-fn normalize_parser(ast: AstNode) -> AstNode {
+fn normalize_parser(ast: crate::parser::AstNode) -> crate::parser::AstNode {
     match ast {
-        AstNode::Or(left, right) => {
+        crate::parser::AstNode::Or(left, right) => {
             let left = normalize_parser(*left);
             let right = normalize_parser(*right);
 
-            if matches!(left, AstNode::Empty) {
+            if matches!(left, crate::parser::AstNode::Empty) {
                 return right;
             }
-            if matches!(right, AstNode::Empty) {
+            if matches!(right, crate::parser::AstNode::Empty) {
                 return left;
             }
             if left == right {
                 return left;
             }
 
-            AstNode::Or(Box::new(left), Box::new(right))
+            crate::parser::AstNode::Or(Box::new(left), Box::new(right))
         }
-        AstNode::Seq(left, right) => {
+        crate::parser::AstNode::Seq(left, right) => {
             let left = normalize_parser(*left);
             let right = normalize_parser(*right);
 
-            if matches!(left, AstNode::Empty) || matches!(right, AstNode::Empty) {
-                return AstNode::Empty;
+            if matches!(left, crate::parser::AstNode::Empty)
+                || matches!(right, crate::parser::AstNode::Empty)
+            {
+                return crate::parser::AstNode::Empty;
             }
-            if matches!(left, AstNode::Epsilon) {
+            if matches!(left, crate::parser::AstNode::Epsilon) {
                 return right;
             }
-            if matches!(right, AstNode::Epsilon) {
+            if matches!(right, crate::parser::AstNode::Epsilon) {
                 return left;
             }
 
-            AstNode::Seq(Box::new(left), Box::new(right))
+            crate::parser::AstNode::Seq(Box::new(left), Box::new(right))
         }
-        AstNode::Plus(inner) => {
+        crate::parser::AstNode::Plus(inner) => {
             let inner = normalize_parser(*inner);
-            if matches!(inner, AstNode::Empty) {
-                AstNode::Empty
+            if matches!(inner, crate::parser::AstNode::Empty) {
+                crate::parser::AstNode::Empty
             } else {
-                AstNode::Plus(Box::new(inner))
+                crate::parser::AstNode::Plus(Box::new(inner))
             }
         }
-        AstNode::Star(inner) => {
+        crate::parser::AstNode::Star(inner) => {
             let inner = normalize_parser(*inner);
-            if matches!(inner, AstNode::Empty) || matches!(inner, AstNode::Epsilon) {
-                AstNode::Epsilon
+            if matches!(inner, crate::parser::AstNode::Empty)
+                || matches!(inner, crate::parser::AstNode::Epsilon)
+            {
+                crate::parser::AstNode::Epsilon
             } else {
-                AstNode::Star(Box::new(inner))
+                crate::parser::AstNode::Star(Box::new(inner))
             }
         }
-        AstNode::Question(inner) => {
+        crate::parser::AstNode::Question(inner) => {
             let inner = normalize_parser(*inner);
-            if matches!(inner, AstNode::Empty) {
-                AstNode::Epsilon
+            if matches!(inner, crate::parser::AstNode::Empty) {
+                crate::parser::AstNode::Epsilon
             } else {
-                AstNode::Question(Box::new(inner))
+                crate::parser::AstNode::Question(Box::new(inner))
             }
         }
         other => other,
     }
 }
 
-fn delta_parser(ast: &AstNode) -> AstNode {
+fn delta_parser(ast: &crate::parser::AstNode) -> crate::parser::AstNode {
     if contain_epsilon_parser(ast) {
-        AstNode::Epsilon
+        crate::parser::AstNode::Epsilon
     } else {
-        AstNode::Empty
+        crate::parser::AstNode::Empty
     }
 }
 
-fn contain_epsilon_parser(ast: &AstNode) -> bool {
+fn contain_epsilon_parser(ast: &crate::parser::AstNode) -> bool {
     match ast {
-        AstNode::Epsilon | AstNode::Star(_) | AstNode::Question(_) => true,
-        AstNode::Empty | AstNode::Char(_) => false,
-        AstNode::Plus(inner) => contain_epsilon_parser(inner),
-        AstNode::Or(left, right) => contain_epsilon_parser(left) || contain_epsilon_parser(right),
-        AstNode::Seq(left, right) => contain_epsilon_parser(left) && contain_epsilon_parser(right),
+        crate::parser::AstNode::Epsilon
+        | crate::parser::AstNode::Star(_)
+        | crate::parser::AstNode::Question(_) => true,
+        crate::parser::AstNode::Empty | crate::parser::AstNode::Char(_) => false,
+        crate::parser::AstNode::Plus(inner) => contain_epsilon_parser(inner),
+        crate::parser::AstNode::Or(left, right) => {
+            contain_epsilon_parser(left) || contain_epsilon_parser(right)
+        }
+        crate::parser::AstNode::Seq(left, right) => {
+            contain_epsilon_parser(left) && contain_epsilon_parser(right)
+        }
     }
 }
