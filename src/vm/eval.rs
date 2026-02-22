@@ -1,6 +1,4 @@
-use crate::vm::instruction::Instruction;
-
-fn add_state_mask(inst: &[Instruction], pc: usize, mask: &mut u64) {
+fn add_state_mask(inst: &[crate::vm::instruction::Instruction], pc: usize, mask: &mut u64) {
     if pc >= inst.len() {
         return;
     }
@@ -11,11 +9,11 @@ fn add_state_mask(inst: &[Instruction], pc: usize, mask: &mut u64) {
     *mask |= bit;
 
     match inst[pc] {
-        Instruction::Split(x, y) => {
+        crate::vm::instruction::Instruction::Split(x, y) => {
             add_state_mask(inst, x, mask);
             add_state_mask(inst, y, mask);
         }
-        Instruction::Jmp(x) => {
+        crate::vm::instruction::Instruction::Jmp(x) => {
             add_state_mask(inst, x, mask);
         }
         _ => {}
@@ -31,7 +29,7 @@ fn for_each_set_bit(mut mask: u64, mut f: impl FnMut(usize)) {
 }
 
 #[inline(never)]
-fn pike_eval_bitmask(inst: &[Instruction], input: &str) -> bool {
+fn pike_eval_bitmask(inst: &[crate::vm::instruction::Instruction], input: &str) -> bool {
     let mut current: u64 = 0;
     add_state_mask(inst, 0, &mut current);
 
@@ -43,7 +41,7 @@ fn pike_eval_bitmask(inst: &[Instruction], input: &str) -> bool {
             }
             let mut next: u64 = 0;
             for_each_set_bit(current, |pc| {
-                if let Instruction::Char(expected) = inst[pc]
+                if let crate::vm::instruction::Instruction::Char(expected) = inst[pc]
                     && expected as u32 <= 127
                     && expected as u8 == byte
                 {
@@ -59,7 +57,7 @@ fn pike_eval_bitmask(inst: &[Instruction], input: &str) -> bool {
             }
             let mut next: u64 = 0;
             for_each_set_bit(current, |pc| {
-                if let Instruction::Char(expected) = inst[pc]
+                if let crate::vm::instruction::Instruction::Char(expected) = inst[pc]
                     && expected == ch
                 {
                     add_state_mask(inst, pc + 1, &mut next);
@@ -71,7 +69,7 @@ fn pike_eval_bitmask(inst: &[Instruction], input: &str) -> bool {
 
     let mut found = false;
     for_each_set_bit(current, |pc| {
-        if matches!(inst[pc], Instruction::Match) {
+        if matches!(inst[pc], crate::vm::instruction::Instruction::Match) {
             found = true;
         }
     });
@@ -79,7 +77,7 @@ fn pike_eval_bitmask(inst: &[Instruction], input: &str) -> bool {
 }
 
 fn add_state_vec(
-    inst: &[Instruction],
+    inst: &[crate::vm::instruction::Instruction],
     pc: usize,
     list: &mut Vec<usize>,
     gen_arr: &mut [u32],
@@ -96,11 +94,11 @@ fn add_state_vec(
     *slot = cur_gen;
 
     match *unsafe { inst.get_unchecked(pc) } {
-        Instruction::Split(x, y) => {
+        crate::vm::instruction::Instruction::Split(x, y) => {
             add_state_vec(inst, x, list, gen_arr, cur_gen);
             add_state_vec(inst, y, list, gen_arr, cur_gen);
         }
-        Instruction::Jmp(x) => {
+        crate::vm::instruction::Instruction::Jmp(x) => {
             add_state_vec(inst, x, list, gen_arr, cur_gen);
         }
         _ => {
@@ -149,7 +147,7 @@ thread_local! {
 }
 
 #[inline(never)]
-fn pike_eval_vec(inst: &[Instruction], input: &str) -> bool {
+fn pike_eval_vec(inst: &[crate::vm::instruction::Instruction], input: &str) -> bool {
     let program_size = inst.len();
 
     BUFFERS.with(|cell| {
@@ -170,7 +168,8 @@ fn pike_eval_vec(inst: &[Instruction], input: &str) -> bool {
                 let len = bufs.current.len();
                 for i in 0..len {
                     let pc = *unsafe { bufs.current.get_unchecked(i) };
-                    if let Instruction::Char(expected) = *unsafe { inst.get_unchecked(pc) }
+                    if let crate::vm::instruction::Instruction::Char(expected) =
+                        *unsafe { inst.get_unchecked(pc) }
                         && expected as u32 <= 127
                         && expected as u8 == byte
                     {
@@ -189,7 +188,8 @@ fn pike_eval_vec(inst: &[Instruction], input: &str) -> bool {
                 let len = bufs.current.len();
                 for i in 0..len {
                     let pc = *unsafe { bufs.current.get_unchecked(i) };
-                    if let Instruction::Char(expected) = *unsafe { inst.get_unchecked(pc) }
+                    if let crate::vm::instruction::Instruction::Char(expected) =
+                        *unsafe { inst.get_unchecked(pc) }
                         && expected == ch
                     {
                         add_state_vec(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
@@ -202,7 +202,7 @@ fn pike_eval_vec(inst: &[Instruction], input: &str) -> bool {
 
         bufs.current
             .iter()
-            .any(|&pc| matches!(inst[pc], Instruction::Match))
+            .any(|&pc| matches!(inst[pc], crate::vm::instruction::Instruction::Match))
     })
 }
 
