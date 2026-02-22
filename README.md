@@ -4,12 +4,13 @@ A hobby regular expression engine in Rust.
 
 - Supports 3 types of engines:
     - DFA-based engine
-        - Converts regex to NFA
-        - Converts NFA to DFA
+        - Converts regex to NFA, then NFA to DFA via subset construction
+        - Matching is a single linear scan over the input with no backtracking
     - VM-based engine
-        - Optimized with caching
+        - Pike VM (Thompson NFA lockstep simulation)
+        - Processes all active NFA states simultaneously per input character
     - Derivative-based engine
-        - Uses Brzozowski's derivatives
+        - Matches by repeatedly computing Brzozowski's derivative of the pattern
 - All engines currently support `*`, `+`, `?`, `|`, `()`, `\` (escape), and Unicode characters.
 
 ## Example
