@@ -32,10 +32,11 @@ fn dfa_long(c: &mut criterion::Criterion) {
     let target_regex = "a+b";
 
     let regex = rustegex::Engine::new(target_regex, "dfa").unwrap();
+    let input = "a".repeat(1000000);
 
     c.bench_function("DFA long", |b| {
         b.iter(|| {
-            regex.is_match("a".repeat(1000000).as_str());
+            regex.is_match(input.as_str());
         })
     });
 }
@@ -74,10 +75,11 @@ fn vm_long(c: &mut criterion::Criterion) {
     let target_regex = "a+b";
 
     let regex = rustegex::Engine::new(target_regex, "vm").unwrap();
+    let input = "a".repeat(1000000);
 
     c.bench_function("VM long", |b| {
         b.iter(|| {
-            regex.is_match("a".repeat(1000000).as_str());
+            regex.is_match(input.as_str());
         })
     });
 }
@@ -116,10 +118,11 @@ fn derivative_long(c: &mut criterion::Criterion) {
     let target_regex = "a+b";
 
     let regex = rustegex::Engine::new(target_regex, "derivative").unwrap();
+    let input = "a".repeat(1000000);
 
     c.bench_function("Derivative long", |b| {
         b.iter(|| {
-            regex.is_match("a".repeat(1000000).as_str());
+            regex.is_match(input.as_str());
         })
     });
 }
