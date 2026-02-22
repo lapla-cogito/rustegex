@@ -1,13 +1,15 @@
 use foldhash::HashMapExt as _;
 
 pub type DfaStateID = u64;
+const DEAD: DfaStateID = DfaStateID::MAX;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dfa {
     start: DfaStateID,
     accepts: bit_set::BitSet,
-    transitions: std::collections::BTreeSet<(DfaStateID, char, DfaStateID)>,
-    cache: foldhash::HashMap<(DfaStateID, char), DfaStateID>,
+    state_count: usize,
+    ascii_table: Vec<DfaStateID>,
+    unicode_table: Vec<foldhash::HashMap<char, DfaStateID>>,
 }
 
 impl Dfa {
@@ -15,8 +17,9 @@ impl Dfa {
         Dfa {
             start,
             accepts,
-            transitions: std::collections::BTreeSet::new(),
-            cache: foldhash::HashMap::new(),
+            state_count: 0,
+            ascii_table: Vec::new(),
+            unicode_table: Vec::new(),
         }
     }
 
@@ -30,27 +33,23 @@ impl Dfa {
     }
 
     #[cfg(test)]
-    pub fn transitions(&self) -> &std::collections::BTreeSet<(DfaStateID, char, DfaStateID)> {
-        &self.transitions
-    }
-
-    pub fn next_transit(
-        &self,
-        current: DfaStateID,
-        input: char,
-        use_dfa_cache: bool,
-    ) -> Option<DfaStateID> {
-        if use_dfa_cache && let Some(&next_state) = self.cache.get(&(current, input)) {
-            return Some(next_state);
+    pub fn transitions(&self) -> std::collections::BTreeSet<(DfaStateID, char, DfaStateID)> {
+        let mut result = std::collections::BTreeSet::new();
+        for state in 0..self.state_count {
+            for byte in 0u8..128 {
+                let next = self.ascii_table[state * 128 + byte as usize];
+                if next != DEAD {
+                    result.insert((state as DfaStateID, byte as char, next));
+                }
+            }
+            for (&c, &next) in &self.unicode_table[state] {
+                result.insert((state as DfaStateID, c, next));
+            }
         }
-
-        self.transitions
-            .iter()
-            .find(|(from, label, _)| *from == current && *label == input)
-            .map(|(_, _, to)| *to)
+        result
     }
 
-    pub fn from_nfa(nfa: &crate::automaton::nfa::Nfa, use_dfa_cache: bool) -> Self {
+    pub fn from_nfa(nfa: &crate::automaton::nfa::Nfa) -> Self {
         let mut dfa_states = foldhash::HashMap::new();
         let mut queue = std::collections::VecDeque::new();
 
@@ -68,6 +67,7 @@ impl Dfa {
         queue.push_back(start_states);
 
         let mut dfa = Dfa::new(start_id, bit_set::BitSet::new());
+        let mut raw_transitions: Vec<(DfaStateID, char, DfaStateID)> = Vec::new();
 
         while let Some(current) = queue.pop_front() {
             let current_id = dfa_states[&current];
@@ -106,10 +106,21 @@ impl Dfa {
                 }
 
                 let next_id = dfa_states[&next];
-                dfa.transitions.insert((current_id, c, next_id));
-                if use_dfa_cache {
-                    dfa.cache.insert((current_id, c), next_id);
-                }
+                raw_transitions.push((current_id, c, next_id));
+            }
+        }
+
+        let state_count = dfa_states.len();
+        dfa.state_count = state_count;
+        dfa.ascii_table = vec![DEAD; state_count * 128];
+        dfa.unicode_table = vec![foldhash::HashMap::new(); state_count];
+
+        for (from, c, to) in raw_transitions {
+            if c.is_ascii() {
+                let idx = from as usize * 128 + c as usize;
+                dfa.ascii_table[idx] = to;
+            } else {
+                dfa.unicode_table[from as usize].insert(c, to);
             }
         }
 
@@ -118,12 +129,33 @@ impl Dfa {
 
     pub fn is_match(&self, input: &str) -> bool {
         let mut state = self.start();
-        let use_dfa_cache = crate::use_dfa_cache(input);
-        for c in input.chars() {
-            if let Some(next) = self.next_transit(state, c, use_dfa_cache) {
+
+        if input.is_ascii() {
+            let table = &self.ascii_table;
+            for &byte in input.as_bytes() {
+                // SAFETY: `state < state_count` (invariant) and `byte < 128` (guaranteed by `input.is_ascii()`),
+                // so `state as usize * 128 + byte as usize < state_count * 128 == table.len()`.
+                let next = *unsafe { table.get_unchecked(state as usize * 128 + byte as usize) };
+                if next == DEAD {
+                    return false;
+                }
                 state = next;
-            } else {
-                return false;
+            }
+        } else {
+            let table = &self.ascii_table;
+            let unicode = &self.unicode_table;
+            for c in input.chars() {
+                if c.is_ascii() {
+                    let next = *unsafe { table.get_unchecked(state as usize * 128 + c as usize) };
+                    if next == DEAD {
+                        return false;
+                    }
+                    state = next;
+                } else if let Some(&next) = unicode[state as usize].get(&c) {
+                    state = next;
+                } else {
+                    return false;
+                }
             }
         }
 
@@ -142,10 +174,10 @@ mod tests {
             &mut crate::automaton::nfa::NfaState::new(),
         )
         .unwrap();
-        let dfa = Dfa::from_nfa(&nfa, false);
+        let dfa = Dfa::from_nfa(&nfa);
         assert_eq!(dfa.start(), 0);
         assert!(dfa.accepts_contains(1));
-        assert_eq!(dfa.transitions(), &[(0, 'a', 1)].iter().cloned().collect());
+        assert_eq!(dfa.transitions(), [(0, 'a', 1)].iter().cloned().collect());
 
         let nfa = crate::automaton::nfa::Nfa::new_from_node(
             crate::parser::AstNode::Or(
@@ -155,7 +187,7 @@ mod tests {
             &mut crate::automaton::nfa::NfaState::new(),
         )
         .unwrap();
-        let dfa = Dfa::from_nfa(&nfa, false);
+        let dfa = Dfa::from_nfa(&nfa);
         assert_eq!(dfa.start(), 0);
         assert!(dfa.accepts_contains(1));
         assert!(dfa.accepts_contains(2));
@@ -176,7 +208,7 @@ mod tests {
             &mut crate::automaton::nfa::NfaState::new(),
         )
         .unwrap();
-        let dfa = Dfa::from_nfa(&nfa, false);
+        let dfa = Dfa::from_nfa(&nfa);
         assert_eq!(dfa.start(), 0);
         assert!(dfa.accepts_contains(0));
         assert!(dfa.accepts_contains(1));

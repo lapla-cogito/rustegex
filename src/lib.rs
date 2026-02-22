@@ -32,7 +32,7 @@ impl Engine {
             "dfa" => {
                 let nfa =
                     automaton::nfa::Nfa::new_from_node(ast, &mut automaton::nfa::NfaState::new())?;
-                let dfa = automaton::dfa::Dfa::from_nfa(&nfa, use_dfa_cache(input));
+                let dfa = automaton::dfa::Dfa::from_nfa(&nfa);
 
                 Ok(Engine {
                     regex: Regex::Dfa { dfa },
@@ -68,10 +68,6 @@ impl Engine {
             }
         }
     }
-}
-
-pub fn use_dfa_cache(input: &str) -> bool {
-    input.len() > 1000
 }
 
 #[cfg(test)]

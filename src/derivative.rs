@@ -3,7 +3,6 @@ use foldhash::HashMapExt as _;
 const DEFAULT_MAX_AST_SIZE: usize = 1000;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-
 struct AstId(u32);
 
 impl AstId {
