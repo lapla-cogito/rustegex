@@ -1,4 +1,5 @@
 use foldhash::HashMapExt as _;
+use foldhash::HashSetExt as _;
 
 const DEFAULT_MAX_AST_SIZE: usize = 1000;
 
@@ -285,7 +286,7 @@ fn contains_epsilon_id(arena: &AstArena, id: AstId) -> bool {
 }
 
 fn structural_size(arena: &AstArena, root: AstId) -> usize {
-    fn dfs(arena: &AstArena, id: AstId, visited: &mut std::collections::HashSet<AstId>) {
+    fn dfs(arena: &AstArena, id: AstId, visited: &mut foldhash::HashSet<AstId>) {
         if !visited.insert(id) {
             return;
         }
@@ -302,7 +303,7 @@ fn structural_size(arena: &AstArena, root: AstId) -> usize {
         }
     }
 
-    let mut visited = std::collections::HashSet::new();
+    let mut visited = foldhash::HashSet::new();
     dfs(arena, root, &mut visited);
     visited.len()
 }
