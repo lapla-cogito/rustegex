@@ -82,10 +82,8 @@ impl Dfa {
             > = foldhash::HashMap::new();
 
             for &state in &current {
-                for &(from, label, to) in nfa.transitions() {
-                    if from == state
-                        && let Some(c) = label
-                    {
+                for &(label, to) in nfa.transitions_from(state) {
+                    if let Some(c) = label {
                         transitions_map
                             .entry(c)
                             .or_default()

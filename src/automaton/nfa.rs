@@ -20,43 +20,81 @@ impl NfaState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Nfa {
     start: NfaStateID,
-    accept: std::collections::HashSet<NfaStateID>,
-    transitions: std::collections::HashSet<(NfaStateID, Option<char>, NfaStateID)>,
+    accept: foldhash::HashSet<NfaStateID>,
+    adj: Vec<Vec<(Option<char>, NfaStateID)>>,
 }
 
 impl Nfa {
     pub fn new(start: NfaStateID, accept: Vec<NfaStateID>) -> Self {
-        Nfa {
+        let mut nfa = Nfa {
             start,
-            accept: accept.into_iter().collect(),
-            transitions: std::collections::HashSet::new(),
+            accept: accept.iter().cloned().collect(),
+            adj: Vec::new(),
+        };
+        nfa.ensure_state(start);
+        for &a in &accept {
+            nfa.ensure_state(a);
         }
+
+        nfa
     }
 
     pub fn start(&self) -> NfaStateID {
         self.start
     }
 
-    pub fn accept(&self) -> &std::collections::HashSet<NfaStateID> {
+    pub fn accept(&self) -> &foldhash::HashSet<NfaStateID> {
         &self.accept
     }
 
-    pub fn transitions(
-        &self,
-    ) -> &std::collections::HashSet<(NfaStateID, Option<char>, NfaStateID)> {
-        &self.transitions
+    pub fn transitions_from(&self, state: NfaStateID) -> &[(Option<char>, NfaStateID)] {
+        if (state as usize) < self.adj.len() {
+            &self.adj[state as usize]
+        } else {
+            &[]
+        }
+    }
+
+    #[cfg(test)]
+    pub fn transitions(&self) -> foldhash::HashSet<(NfaStateID, Option<char>, NfaStateID)> {
+        use foldhash::HashSetExt as _;
+
+        let mut set = foldhash::HashSet::new();
+        for (from, edges) in self.adj.iter().enumerate() {
+            for &(label, to) in edges {
+                set.insert((from as NfaStateID, label, to));
+            }
+        }
+
+        set
+    }
+
+    fn ensure_state(&mut self, id: NfaStateID) {
+        let needed = id as usize + 1;
+        if self.adj.len() < needed {
+            self.adj.resize_with(needed, Vec::new);
+        }
     }
 
     fn add_transition(&mut self, from: NfaStateID, char: char, to: NfaStateID) {
-        self.transitions.insert((from, Some(char), to));
+        self.ensure_state(from);
+        self.ensure_state(to);
+        self.adj[from as usize].push((Some(char), to));
     }
 
     fn add_epsilon_transition(&mut self, from: NfaStateID, to: NfaStateID) {
-        self.transitions.insert((from, None, to));
+        self.ensure_state(from);
+        self.ensure_state(to);
+        self.adj[from as usize].push((None, to));
     }
 
     fn merge_nfa(&mut self, other: &Nfa) {
-        self.transitions.extend(other.transitions.clone());
+        for (from, edges) in other.adj.iter().enumerate() {
+            if !edges.is_empty() {
+                self.ensure_state(from as NfaStateID);
+                self.adj[from].extend(edges.iter().cloned());
+            }
+        }
         self.add_epsilon_transition(self.start, other.start);
         for accept in other.accept.iter() {
             self.accept.insert(*accept);
@@ -87,7 +125,13 @@ impl Nfa {
                 let accept = state.new_state();
                 let mut nfa = Nfa::new(start, vec![accept]);
 
-                nfa.transitions.extend(remain.transitions.clone());
+                // Copy transitions from inner NFA
+                for (from, edges) in remain.adj.iter().enumerate() {
+                    if !edges.is_empty() {
+                        nfa.ensure_state(from as NfaStateID);
+                        nfa.adj[from].extend(edges.iter().cloned());
+                    }
+                }
                 nfa.add_epsilon_transition(start, remain.start);
                 nfa.add_epsilon_transition(start, accept);
                 for accept_state in remain.accept.iter() {
@@ -116,12 +160,9 @@ impl Nfa {
             crate::parser::AstNode::Question(boxed) => {
                 let remain = Nfa::new_from_node(*boxed, state)?;
                 let start = state.new_state();
-                let accept = remain
-                    .accept
-                    .union(&[start].into_iter().collect())
-                    .cloned()
-                    .collect();
-                let mut nfa = Nfa::new(start, accept);
+                let mut accept_set = remain.accept.clone();
+                accept_set.insert(start);
+                let mut nfa = Nfa::new(start, accept_set.into_iter().collect());
                 nfa.merge_nfa(&remain);
                 nfa.add_epsilon_transition(start, remain.start);
 
@@ -136,9 +177,13 @@ impl Nfa {
                 let remain2 = Nfa::new_from_node(*boxed2, state)?;
                 let start = state.new_state();
 
-                let accept: std::collections::HashSet<NfaStateID> =
-                    remain1.accept.union(&remain2.accept).cloned().collect();
-                let mut nfa = Nfa::new(start, accept.into_iter().collect());
+                let accept: Vec<NfaStateID> = remain1
+                    .accept
+                    .iter()
+                    .chain(remain2.accept.iter())
+                    .cloned()
+                    .collect();
+                let mut nfa = Nfa::new(start, accept);
                 nfa.merge_nfa(&remain1);
                 nfa.merge_nfa(&remain2);
                 nfa.add_epsilon_transition(start, remain1.start);
@@ -186,8 +231,8 @@ impl Nfa {
         while let Some(state) = to_visit.pop_front() {
             if !visited.contains(state as usize) {
                 visited.insert(state as usize);
-                for &(from, label, to) in self.transitions() {
-                    if from == state && label.is_none() && !visited.contains(to as usize) {
+                for &(label, to) in self.transitions_from(state) {
+                    if label.is_none() && !visited.contains(to as usize) {
                         to_visit.push_back(to);
                     }
                 }
@@ -214,6 +259,9 @@ impl Nfa {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn set(items: &[NfaStateID]) -> foldhash::HashSet<NfaStateID> {
+        items.iter().cloned().collect()
+    }
 
     #[test]
     fn new_from_node() {
@@ -221,9 +269,9 @@ mod tests {
         let nfa =
             Nfa::new_from_node(crate::parser::AstNode::Char('a'), &mut NfaState::new()).unwrap();
         assert_eq!(nfa.start, 0);
-        assert_eq!(nfa.accept, [1].into());
+        assert_eq!(nfa.accept, set(&[1]));
         assert_eq!(
-            nfa.transitions,
+            nfa.transitions(),
             vec![(0, Some('a'), 1)].into_iter().collect()
         );
 
@@ -231,8 +279,8 @@ mod tests {
         let nfa =
             Nfa::new_from_node(crate::parser::AstNode::Epsilon, &mut NfaState::new()).unwrap();
         assert_eq!(nfa.start, 0);
-        assert_eq!(nfa.accept, [1].into());
-        assert_eq!(nfa.transitions, vec![(0, None, 1)].into_iter().collect());
+        assert_eq!(nfa.accept, set(&[1]));
+        assert_eq!(nfa.transitions(), vec![(0, None, 1)].into_iter().collect());
 
         // a*
         let nfa = Nfa::new_from_node(
@@ -241,9 +289,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(nfa.start, 2);
-        assert_eq!(nfa.accept, [1, 2].into());
+        assert_eq!(nfa.accept, set(&[1, 2]));
         assert_eq!(
-            nfa.transitions,
+            nfa.transitions(),
             vec![(0, Some('a'), 1), (2, None, 0), (1, None, 0)]
                 .into_iter()
                 .collect()
@@ -259,9 +307,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(nfa.start, 4);
-        assert_eq!(nfa.accept, [1, 3].into());
+        assert_eq!(nfa.accept, set(&[1, 3]));
         assert_eq!(
-            nfa.transitions,
+            nfa.transitions(),
             vec![
                 (0, Some('a'), 1),
                 (2, Some('b'), 3),
@@ -279,9 +327,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(nfa.start, 2);
-        assert_eq!(nfa.accept, [1, 2].into());
+        assert_eq!(nfa.accept, set(&[1, 2]));
         assert_eq!(
-            nfa.transitions,
+            nfa.transitions(),
             vec![(1, None, 0), (0, Some('a'), 1), (2, None, 0)]
                 .into_iter()
                 .collect()
@@ -294,9 +342,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(nfa.start, 2);
-        assert_eq!(nfa.accept, [3].into());
+        assert_eq!(nfa.accept, set(&[3]));
         assert_eq!(
-            nfa.transitions,
+            nfa.transitions(),
             vec![
                 (1, None, 3),
                 (0, Some('a'), 1),
@@ -318,9 +366,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(nfa.start, 0);
-        assert_eq!(nfa.accept, [3].into());
+        assert_eq!(nfa.accept, set(&[3]));
         assert_eq!(
-            nfa.transitions,
+            nfa.transitions(),
             vec![
                 (0, Some('a'), 1),
                 (0, None, 2),
@@ -338,9 +386,9 @@ mod tests {
         let mut parser = crate::parser::Parser::new(&mut lexer);
         let nfa = Nfa::new_from_node(parser.parse().unwrap(), &mut NfaState::new()).unwrap();
         assert_eq!(nfa.start, 4);
-        assert_eq!(nfa.accept, [1, 3].into());
+        assert_eq!(nfa.accept, set(&[1, 3]));
         assert_eq!(
-            nfa.transitions,
+            nfa.transitions(),
             vec![
                 (0, Some('a'), 1),
                 (2, Some('b'), 3),
@@ -355,9 +403,9 @@ mod tests {
         let mut parser = crate::parser::Parser::new(&mut lexer);
         let nfa = Nfa::new_from_node(parser.parse().unwrap(), &mut NfaState::new()).unwrap();
         assert_eq!(nfa.start, 5);
-        assert_eq!(nfa.accept, [1, 3, 4].into());
+        assert_eq!(nfa.accept, set(&[1, 3, 4]));
         assert_eq!(
-            nfa.transitions,
+            nfa.transitions(),
             vec![
                 (5, None, 0),
                 (0, Some('a'), 1),
@@ -374,9 +422,9 @@ mod tests {
         let mut parser = crate::parser::Parser::new(&mut lexer);
         let nfa = Nfa::new_from_node(parser.parse().unwrap(), &mut NfaState::new()).unwrap();
         assert_eq!(nfa.start, 6);
-        assert_eq!(nfa.accept, [1, 5].into());
+        assert_eq!(nfa.accept, set(&[1, 5]));
         assert_eq!(
-            nfa.transitions,
+            nfa.transitions(),
             vec![
                 (4, None, 2),
                 (3, None, 2),
@@ -395,9 +443,9 @@ mod tests {
         let mut parser = crate::parser::Parser::new(&mut lexer);
         let nfa = Nfa::new_from_node(parser.parse().unwrap(), &mut NfaState::new()).unwrap();
         assert_eq!(nfa.start, 5);
-        assert_eq!(nfa.accept, [1, 3, 4].into());
+        assert_eq!(nfa.accept, set(&[1, 3, 4]));
         assert_eq!(
-            nfa.transitions,
+            nfa.transitions(),
             vec![
                 (4, None, 2),
                 (5, None, 0),
@@ -414,9 +462,9 @@ mod tests {
         let mut parser = crate::parser::Parser::new(&mut lexer);
         let nfa = Nfa::new_from_node(parser.parse().unwrap(), &mut NfaState::new()).unwrap();
         assert_eq!(nfa.start, 7);
-        assert_eq!(nfa.accept, [1, 3, 5].into());
+        assert_eq!(nfa.accept, set(&[1, 3, 5]));
         assert_eq!(
-            nfa.transitions,
+            nfa.transitions(),
             vec![
                 (0, Some('a'), 1),
                 (6, None, 4),
@@ -434,9 +482,9 @@ mod tests {
         let mut parser = crate::parser::Parser::new(&mut lexer);
         let nfa = Nfa::new_from_node(parser.parse().unwrap(), &mut NfaState::new()).unwrap();
         assert_eq!(nfa.start, 0);
-        assert_eq!(nfa.accept, [3, 5].into());
+        assert_eq!(nfa.accept, set(&[3, 5]));
         assert_eq!(
-            nfa.transitions,
+            nfa.transitions(),
             vec![
                 (1, None, 6),
                 (0, None, 6),
@@ -454,9 +502,9 @@ mod tests {
         let mut parser = crate::parser::Parser::new(&mut lexer);
         let nfa = Nfa::new_from_node(parser.parse().unwrap(), &mut NfaState::new()).unwrap();
         assert_eq!(nfa.start, 7);
-        assert_eq!(nfa.accept, [6, 7].into());
+        assert_eq!(nfa.accept, set(&[6, 7]));
         assert_eq!(
-            nfa.transitions,
+            nfa.transitions(),
             vec![
                 (5, None, 4),
                 (1, None, 4),
@@ -479,9 +527,9 @@ mod tests {
         let mut parser = crate::parser::Parser::new(&mut lexer);
         let nfa = Nfa::new_from_node(parser.parse().unwrap(), &mut NfaState::new()).unwrap();
         assert_eq!(nfa.start, 9);
-        assert_eq!(nfa.accept, [1, 3, 4, 6, 7].into());
+        assert_eq!(nfa.accept, set(&[1, 3, 4, 6, 7]));
         assert_eq!(
-            nfa.transitions,
+            nfa.transitions(),
             vec![
                 (8, None, 4),
                 (7, None, 5),
