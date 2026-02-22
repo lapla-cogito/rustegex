@@ -43,10 +43,11 @@ fn pike_eval_bitmask(inst: &[Instruction], input: &str) -> bool {
             }
             let mut next: u64 = 0;
             for_each_set_bit(current, |pc| {
-                if let Instruction::Char(expected) = inst[pc] {
-                    if expected as u32 <= 127 && expected as u8 == byte {
-                        add_state_mask(inst, pc + 1, &mut next);
-                    }
+                if let Instruction::Char(expected) = inst[pc]
+                    && expected as u32 <= 127
+                    && expected as u8 == byte
+                {
+                    add_state_mask(inst, pc + 1, &mut next);
                 }
             });
             current = next;
@@ -58,10 +59,10 @@ fn pike_eval_bitmask(inst: &[Instruction], input: &str) -> bool {
             }
             let mut next: u64 = 0;
             for_each_set_bit(current, |pc| {
-                if let Instruction::Char(expected) = inst[pc] {
-                    if expected == ch {
-                        add_state_mask(inst, pc + 1, &mut next);
-                    }
+                if let Instruction::Char(expected) = inst[pc]
+                    && expected == ch
+                {
+                    add_state_mask(inst, pc + 1, &mut next);
                 }
             });
             current = next;
@@ -169,10 +170,11 @@ fn pike_eval_vec(inst: &[Instruction], input: &str) -> bool {
                 let len = bufs.current.len();
                 for i in 0..len {
                     let pc = *unsafe { bufs.current.get_unchecked(i) };
-                    if let Instruction::Char(expected) = *unsafe { inst.get_unchecked(pc) } {
-                        if expected as u32 <= 127 && expected as u8 == byte {
-                            add_state_vec(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
-                        }
+                    if let Instruction::Char(expected) = *unsafe { inst.get_unchecked(pc) }
+                        && expected as u32 <= 127
+                        && expected as u8 == byte
+                    {
+                        add_state_vec(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
                     }
                 }
                 std::mem::swap(&mut bufs.current, &mut bufs.next);
@@ -187,10 +189,10 @@ fn pike_eval_vec(inst: &[Instruction], input: &str) -> bool {
                 let len = bufs.current.len();
                 for i in 0..len {
                     let pc = *unsafe { bufs.current.get_unchecked(i) };
-                    if let Instruction::Char(expected) = *unsafe { inst.get_unchecked(pc) } {
-                        if expected == ch {
-                            add_state_vec(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
-                        }
+                    if let Instruction::Char(expected) = *unsafe { inst.get_unchecked(pc) }
+                        && expected == ch
+                    {
+                        add_state_vec(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
                     }
                 }
                 std::mem::swap(&mut bufs.current, &mut bufs.next);
