@@ -1,101 +1,57 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Compiler {
-    pc: usize,
-    instructions: Vec<crate::vm::instruction::Instruction>,
+    builder: crate::vm::instruction::ProgramBuilder,
 }
 
 impl Compiler {
     pub fn new() -> Self {
         Compiler {
-            pc: 0,
-            instructions: Vec::new(),
+            builder: crate::vm::instruction::ProgramBuilder::new(),
         }
     }
 
-    pub fn instructions(&self) -> &Vec<crate::vm::instruction::Instruction> {
-        &self.instructions
-    }
-
-    fn emit(&mut self, instruction: crate::vm::instruction::Instruction) {
-        self.instructions.push(instruction);
-        self.pc += 1;
-    }
-
-    fn patch(&mut self, pc: usize, instruction: crate::vm::instruction::Instruction) {
-        self.instructions[pc] = instruction;
+    pub fn finish(self) -> crate::vm::instruction::Program {
+        self.builder.build()
     }
 
     fn _compile(&mut self, ast: crate::parser::AstNode) -> crate::Result<()> {
         match ast {
             crate::parser::AstNode::Char(c) => {
-                self.emit(crate::vm::instruction::Instruction::Char(c));
+                self.builder.emit_char(c);
             }
             crate::parser::AstNode::Plus(node) => {
-                let split = self.pc;
-                self.emit(crate::vm::instruction::Instruction::Split(0, 0));
-                let start = self.pc;
+                let split = self.builder.reserve_split();
+                let start = self.builder.pc();
                 self._compile(*node)?;
-                self.emit(crate::vm::instruction::Instruction::Jmp(split));
-                let end = self.pc;
-                self.patch(
-                    split,
-                    crate::vm::instruction::Instruction::Split(start, end),
-                );
+                self.builder.emit_jmp(split);
+                let end = self.builder.pc();
+                self.builder.patch_split(split, start, end);
             }
             crate::parser::AstNode::Star(node) => {
-                let split = self.pc;
-                self.pc += 1;
-                self.instructions
-                    .push(crate::vm::instruction::Instruction::Split(self.pc, 0));
+                let split = self.builder.pc();
+                let body_start = split + 1;
+                self.builder.emit_split(body_start, 0);
                 self._compile(*node)?;
-                self.pc += 1;
-                self.instructions
-                    .push(crate::vm::instruction::Instruction::Jmp(split));
-
-                if let Some(crate::vm::instruction::Instruction::Split(_, expr)) =
-                    self.instructions.get_mut(split)
-                {
-                    *expr = self.pc;
-                } else {
-                    return Err(crate::error::Error::CompileError);
-                }
+                self.builder.emit_jmp(split);
+                let end = self.builder.pc();
+                self.builder.patch_split_second(split, end);
             }
             crate::parser::AstNode::Question(node) => {
-                let split = self.pc;
-                self.emit(crate::vm::instruction::Instruction::Split(0, 0));
-                let start = self.pc;
+                let split = self.builder.reserve_split();
+                let start = self.builder.pc();
                 self._compile(*node)?;
-                let end = self.pc;
-                self.patch(
-                    split,
-                    crate::vm::instruction::Instruction::Split(start, end),
-                );
+                let end = self.builder.pc();
+                self.builder.patch_split(split, start, end);
             }
             crate::parser::AstNode::Or(left, right) => {
-                let split = self.pc;
-                self.pc += 1;
-                self.instructions
-                    .push(crate::vm::instruction::Instruction::Split(self.pc, 0));
+                let split = self.builder.reserve_split();
+                let start = self.builder.pc();
                 self._compile(*left)?;
-                let jump = self.pc;
-                self.emit(crate::vm::instruction::Instruction::Jmp(0));
-
-                if let Some(crate::vm::instruction::Instruction::Split(_, expr)) =
-                    self.instructions.get_mut(split)
-                {
-                    *expr = self.pc;
-                } else {
-                    return Err(crate::error::Error::CompileError);
-                }
-
+                let jump = self.builder.reserve_jmp();
+                let right_start = self.builder.pc();
+                self.builder.patch_split_second(split, right_start);
                 self._compile(*right)?;
-                if let Some(crate::vm::instruction::Instruction::Jmp(expr)) =
-                    self.instructions.get_mut(jump)
-                {
-                    *expr = self.pc;
-                } else {
-                    return Err(crate::error::Error::CompileError);
-                }
+                self.builder.patch_jmp(jump, self.builder.pc());
+                self.builder.patch_split(split, start, right_start);
             }
             crate::parser::AstNode::Seq(left, right) => {
                 if let (crate::parser::AstNode::Epsilon, crate::parser::AstNode::Epsilon) =
@@ -115,10 +71,7 @@ impl Compiler {
 
     pub fn compile(&mut self, ast: crate::parser::AstNode) -> crate::Result<()> {
         self._compile(ast)?;
-        self.pc += 1;
-        self.instructions
-            .push(crate::vm::instruction::Instruction::Match);
-
+        self.builder.emit_match();
         Ok(())
     }
 }
@@ -127,60 +80,63 @@ impl Compiler {
 mod tests {
     use super::*;
 
+    fn compile_pattern(pattern: &str) -> crate::vm::instruction::Program {
+        let mut lexer = crate::lexer::Lexer::new(pattern);
+        let mut parser = crate::parser::Parser::new(&mut lexer);
+        let ast = parser.parse().unwrap();
+        let mut compiler = Compiler::new();
+        compiler.compile(ast).unwrap();
+        compiler.finish()
+    }
+
+    fn assert_program(program: &crate::vm::instruction::Program, expected: &[(u8, u32, u32)]) {
+        assert_eq!(program.len(), expected.len());
+        for (pc, &(opcode, op1, op2)) in expected.iter().enumerate() {
+            assert_eq!(program.opcode(pc), opcode, "opcode mismatch at pc {pc}");
+            assert_eq!(program.operand1(pc), op1, "op1 mismatch at pc {pc}");
+            assert_eq!(program.operand2(pc), op2, "op2 mismatch at pc {pc}");
+        }
+    }
+
     #[test]
     fn compile() {
-        let mut lexer = crate::lexer::Lexer::new("a|b");
-        let mut parser = crate::parser::Parser::new(&mut lexer);
-        let ast = parser.parse().unwrap();
-        let mut compiler = Compiler::new();
-        compiler.compile(ast).unwrap();
-        assert_eq!(
-            compiler.instructions,
-            vec![
-                crate::vm::instruction::Instruction::Split(1, 3),
-                crate::vm::instruction::Instruction::Char('a'),
-                crate::vm::instruction::Instruction::Jmp(4),
-                crate::vm::instruction::Instruction::Char('b'),
-                crate::vm::instruction::Instruction::Match,
-            ]
+        assert_program(
+            &compile_pattern("a|b"),
+            &[
+                (crate::vm::instruction::OP_SPLIT, 1, 3),
+                (crate::vm::instruction::OP_CHAR, 'a' as u32, 0),
+                (crate::vm::instruction::OP_JMP, 4, 0),
+                (crate::vm::instruction::OP_CHAR, 'b' as u32, 0),
+                (crate::vm::instruction::OP_MATCH, 0, 0),
+            ],
         );
 
-        let mut lexer = crate::lexer::Lexer::new("aa*bb*");
-        let mut parser = crate::parser::Parser::new(&mut lexer);
-        let ast = parser.parse().unwrap();
-        let mut compiler = Compiler::new();
-        compiler.compile(ast).unwrap();
-        assert_eq!(
-            compiler.instructions,
-            vec![
-                crate::vm::instruction::Instruction::Char('a'),
-                crate::vm::instruction::Instruction::Split(2, 4),
-                crate::vm::instruction::Instruction::Char('a'),
-                crate::vm::instruction::Instruction::Jmp(1),
-                crate::vm::instruction::Instruction::Char('b'),
-                crate::vm::instruction::Instruction::Split(6, 8),
-                crate::vm::instruction::Instruction::Char('b'),
-                crate::vm::instruction::Instruction::Jmp(5),
-                crate::vm::instruction::Instruction::Match,
-            ]
+        assert_program(
+            &compile_pattern("aa*bb*"),
+            &[
+                (crate::vm::instruction::OP_CHAR, 'a' as u32, 0),
+                (crate::vm::instruction::OP_SPLIT, 2, 4),
+                (crate::vm::instruction::OP_CHAR, 'a' as u32, 0),
+                (crate::vm::instruction::OP_JMP, 1, 0),
+                (crate::vm::instruction::OP_CHAR, 'b' as u32, 0),
+                (crate::vm::instruction::OP_SPLIT, 6, 8),
+                (crate::vm::instruction::OP_CHAR, 'b' as u32, 0),
+                (crate::vm::instruction::OP_JMP, 5, 0),
+                (crate::vm::instruction::OP_MATCH, 0, 0),
+            ],
         );
 
-        let mut lexer = crate::lexer::Lexer::new("a|b*");
-        let mut parser = crate::parser::Parser::new(&mut lexer);
-        let ast = parser.parse().unwrap();
-        let mut compiler = Compiler::new();
-        compiler.compile(ast).unwrap();
-        assert_eq!(
-            compiler.instructions,
-            vec![
-                crate::vm::instruction::Instruction::Split(1, 3),
-                crate::vm::instruction::Instruction::Char('a'),
-                crate::vm::instruction::Instruction::Jmp(6),
-                crate::vm::instruction::Instruction::Split(4, 6),
-                crate::vm::instruction::Instruction::Char('b'),
-                crate::vm::instruction::Instruction::Jmp(3),
-                crate::vm::instruction::Instruction::Match,
-            ]
+        assert_program(
+            &compile_pattern("a|b*"),
+            &[
+                (crate::vm::instruction::OP_SPLIT, 1, 3),
+                (crate::vm::instruction::OP_CHAR, 'a' as u32, 0),
+                (crate::vm::instruction::OP_JMP, 6, 0),
+                (crate::vm::instruction::OP_SPLIT, 4, 6),
+                (crate::vm::instruction::OP_CHAR, 'b' as u32, 0),
+                (crate::vm::instruction::OP_JMP, 3, 0),
+                (crate::vm::instruction::OP_MATCH, 0, 0),
+            ],
         );
     }
 }

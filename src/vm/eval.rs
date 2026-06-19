@@ -1,4 +1,4 @@
-fn add_state_mask(inst: &[crate::vm::instruction::Instruction], pc: usize, mask: &mut u64) {
+fn add_state_mask(inst: &crate::vm::instruction::Program, pc: usize, mask: &mut u64) {
     if pc >= inst.len() {
         return;
     }
@@ -8,12 +8,15 @@ fn add_state_mask(inst: &[crate::vm::instruction::Instruction], pc: usize, mask:
     }
     *mask |= bit;
 
-    match inst[pc] {
-        crate::vm::instruction::Instruction::Split(x, y) => {
+    match inst.opcode(pc) {
+        crate::vm::instruction::OP_SPLIT => {
+            let x = inst.operand1(pc) as usize;
+            let y = inst.operand2(pc) as usize;
             add_state_mask(inst, x, mask);
             add_state_mask(inst, y, mask);
         }
-        crate::vm::instruction::Instruction::Jmp(x) => {
+        crate::vm::instruction::OP_JMP => {
+            let x = inst.operand1(pc) as usize;
             add_state_mask(inst, x, mask);
         }
         _ => {}
@@ -24,28 +27,27 @@ fn for_each_set_bit(mut mask: u64, mut f: impl FnMut(usize)) {
     while mask != 0 {
         let pc = mask.trailing_zeros() as usize;
         f(pc);
-        mask &= mask - 1; // clear lowest set bit
+        mask &= mask - 1;
     }
 }
 
 #[inline(never)]
-fn pike_eval_bitmask(inst: &[crate::vm::instruction::Instruction], input: &str) -> bool {
+fn pike_eval_bitmask(inst: &crate::vm::instruction::Program, input: &str) -> bool {
     let mut current: u64 = 0;
     add_state_mask(inst, 0, &mut current);
 
     if input.is_ascii() {
-        // ascii fast path
         for &byte in input.as_bytes() {
             if current == 0 {
                 return false;
             }
             let mut next: u64 = 0;
             for_each_set_bit(current, |pc| {
-                if let crate::vm::instruction::Instruction::Char(expected) = inst[pc]
-                    && expected as u32 <= 127
-                    && expected as u8 == byte
-                {
-                    add_state_mask(inst, pc + 1, &mut next);
+                if inst.opcode(pc) == crate::vm::instruction::OP_CHAR {
+                    let expected = inst.operand1(pc);
+                    if expected <= 127 && expected as u8 == byte {
+                        add_state_mask(inst, pc + 1, &mut next);
+                    }
                 }
             });
             current = next;
@@ -57,10 +59,11 @@ fn pike_eval_bitmask(inst: &[crate::vm::instruction::Instruction], input: &str) 
             }
             let mut next: u64 = 0;
             for_each_set_bit(current, |pc| {
-                if let crate::vm::instruction::Instruction::Char(expected) = inst[pc]
-                    && expected == ch
-                {
-                    add_state_mask(inst, pc + 1, &mut next);
+                if inst.opcode(pc) == crate::vm::instruction::OP_CHAR {
+                    let expected = inst.char_literal(pc);
+                    if expected == ch {
+                        add_state_mask(inst, pc + 1, &mut next);
+                    }
                 }
             });
             current = next;
@@ -69,7 +72,7 @@ fn pike_eval_bitmask(inst: &[crate::vm::instruction::Instruction], input: &str) 
 
     let mut found = false;
     for_each_set_bit(current, |pc| {
-        if matches!(inst[pc], crate::vm::instruction::Instruction::Match) {
+        if inst.opcode(pc) == crate::vm::instruction::OP_MATCH {
             found = true;
         }
     });
@@ -77,7 +80,7 @@ fn pike_eval_bitmask(inst: &[crate::vm::instruction::Instruction], input: &str) 
 }
 
 fn add_state_vec(
-    inst: &[crate::vm::instruction::Instruction],
+    inst: &crate::vm::instruction::Program,
     pc: usize,
     list: &mut Vec<usize>,
     gen_arr: &mut [u32],
@@ -86,19 +89,21 @@ fn add_state_vec(
     if pc >= inst.len() {
         return;
     }
-    // SAFETY: pc < inst.len() and gen_arr.len() >= inst.len()
     let slot = unsafe { gen_arr.get_unchecked_mut(pc) };
     if *slot == cur_gen {
         return;
     }
     *slot = cur_gen;
 
-    match *unsafe { inst.get_unchecked(pc) } {
-        crate::vm::instruction::Instruction::Split(x, y) => {
+    match inst.opcode(pc) {
+        crate::vm::instruction::OP_SPLIT => {
+            let x = inst.operand1(pc) as usize;
+            let y = inst.operand2(pc) as usize;
             add_state_vec(inst, x, list, gen_arr, cur_gen);
             add_state_vec(inst, y, list, gen_arr, cur_gen);
         }
-        crate::vm::instruction::Instruction::Jmp(x) => {
+        crate::vm::instruction::OP_JMP => {
+            let x = inst.operand1(pc) as usize;
             add_state_vec(inst, x, list, gen_arr, cur_gen);
         }
         _ => {
@@ -147,7 +152,7 @@ thread_local! {
 }
 
 #[inline(never)]
-fn pike_eval_vec(inst: &[crate::vm::instruction::Instruction], input: &str) -> bool {
+fn pike_eval_vec(inst: &crate::vm::instruction::Program, input: &str) -> bool {
     let program_size = inst.len();
 
     BUFFERS.with(|cell| {
@@ -168,12 +173,11 @@ fn pike_eval_vec(inst: &[crate::vm::instruction::Instruction], input: &str) -> b
                 let len = bufs.current.len();
                 for i in 0..len {
                     let pc = *unsafe { bufs.current.get_unchecked(i) };
-                    if let crate::vm::instruction::Instruction::Char(expected) =
-                        *unsafe { inst.get_unchecked(pc) }
-                        && expected as u32 <= 127
-                        && expected as u8 == byte
-                    {
-                        add_state_vec(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
+                    if inst.opcode(pc) == crate::vm::instruction::OP_CHAR {
+                        let expected = inst.operand1(pc);
+                        if expected <= 127 && expected as u8 == byte {
+                            add_state_vec(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
+                        }
                     }
                 }
                 std::mem::swap(&mut bufs.current, &mut bufs.next);
@@ -188,11 +192,11 @@ fn pike_eval_vec(inst: &[crate::vm::instruction::Instruction], input: &str) -> b
                 let len = bufs.current.len();
                 for i in 0..len {
                     let pc = *unsafe { bufs.current.get_unchecked(i) };
-                    if let crate::vm::instruction::Instruction::Char(expected) =
-                        *unsafe { inst.get_unchecked(pc) }
-                        && expected == ch
-                    {
-                        add_state_vec(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
+                    if inst.opcode(pc) == crate::vm::instruction::OP_CHAR {
+                        let expected = inst.char_literal(pc);
+                        if expected == ch {
+                            add_state_vec(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
+                        }
                     }
                 }
                 std::mem::swap(&mut bufs.current, &mut bufs.next);
@@ -202,12 +206,12 @@ fn pike_eval_vec(inst: &[crate::vm::instruction::Instruction], input: &str) -> b
 
         bufs.current
             .iter()
-            .any(|&pc| matches!(inst[pc], crate::vm::instruction::Instruction::Match))
+            .any(|&pc| inst.opcode(pc) == crate::vm::instruction::OP_MATCH)
     })
 }
 
 pub fn eval(
-    inst: &[crate::vm::instruction::Instruction],
+    inst: &crate::vm::instruction::Program,
     input: &str,
     _input_looking: usize,
     _pc: usize,
@@ -227,116 +231,72 @@ pub fn eval(
 mod tests {
     use super::*;
 
+    fn compile_and_eval(pattern: &str, input: &str) -> bool {
+        let mut lexer = crate::lexer::Lexer::new(pattern);
+        let mut parser = crate::parser::Parser::new(&mut lexer);
+        let ast = parser.parse().unwrap();
+        let mut compiler = crate::vm::compile::Compiler::new();
+        compiler.compile(ast).unwrap();
+        let inst = compiler.finish();
+        eval(&inst, input, 0, 0)
+    }
+
     #[test]
     fn evaluation() {
-        let mut lexer = crate::lexer::Lexer::new("a|b*");
-        let mut parser = crate::parser::Parser::new(&mut lexer);
-        let ast = parser.parse().unwrap();
-        let mut compiler = crate::vm::compile::Compiler::new();
-        compiler.compile(ast).unwrap();
-        let inst = compiler.instructions().to_vec();
-        assert!(eval(&inst, "a", 0, 0));
-        assert!(eval(&inst, "b", 0, 0));
-        assert!(eval(&inst, "bb", 0, 0));
-        assert!(!eval(&inst, "c", 0, 0));
+        assert!(compile_and_eval("a|b*", "a"));
+        assert!(compile_and_eval("a|b*", "b"));
+        assert!(compile_and_eval("a|b*", "bb"));
+        assert!(!compile_and_eval("a|b*", "c"));
 
-        let mut lexer = crate::lexer::Lexer::new("a|b+");
-        let mut parser = crate::parser::Parser::new(&mut lexer);
-        let ast = parser.parse().unwrap();
-        let mut compiler = crate::vm::compile::Compiler::new();
-        compiler.compile(ast).unwrap();
-        let inst = compiler.instructions().to_vec();
-        assert!(eval(&inst, "a", 0, 0));
-        assert!(eval(&inst, "b", 0, 0));
-        assert!(eval(&inst, "bb", 0, 0));
-        assert!(!eval(&inst, "c", 0, 0));
+        assert!(compile_and_eval("a|b+", "a"));
+        assert!(compile_and_eval("a|b+", "b"));
+        assert!(compile_and_eval("a|b+", "bb"));
+        assert!(!compile_and_eval("a|b+", "c"));
 
-        let mut lexer = crate::lexer::Lexer::new("a|b?");
-        let mut parser = crate::parser::Parser::new(&mut lexer);
-        let ast = parser.parse().unwrap();
-        let mut compiler = crate::vm::compile::Compiler::new();
-        compiler.compile(ast).unwrap();
-        let inst = compiler.instructions().to_vec();
-        assert!(eval(&inst, "a", 0, 0));
-        assert!(eval(&inst, "b", 0, 0));
-        assert!(!eval(&inst, "bb", 0, 0));
-        assert!(!eval(&inst, "c", 0, 0));
+        assert!(compile_and_eval("a|b?", "a"));
+        assert!(compile_and_eval("a|b?", "b"));
+        assert!(!compile_and_eval("a|b?", "bb"));
+        assert!(!compile_and_eval("a|b?", "c"));
     }
 
     #[test]
     fn evaluation_empty() {
-        let mut lexer = crate::lexer::Lexer::new("a*");
-        let mut parser = crate::parser::Parser::new(&mut lexer);
-        let ast = parser.parse().unwrap();
-        let mut compiler = crate::vm::compile::Compiler::new();
-        compiler.compile(ast).unwrap();
-        let inst = compiler.instructions().to_vec();
-        assert!(eval(&inst, "", 0, 0));
-        assert!(eval(&inst, "a", 0, 0));
-        assert!(eval(&inst, "aaa", 0, 0));
-        assert!(!eval(&inst, "b", 0, 0));
+        assert!(compile_and_eval("a*", ""));
+        assert!(compile_and_eval("a*", "a"));
+        assert!(compile_and_eval("a*", "aaa"));
+        assert!(!compile_and_eval("a*", "b"));
     }
 
     #[test]
     fn evaluation_complex() {
-        let mut lexer = crate::lexer::Lexer::new("ab(cd|)ef");
-        let mut parser = crate::parser::Parser::new(&mut lexer);
-        let ast = parser.parse().unwrap();
-        let mut compiler = crate::vm::compile::Compiler::new();
-        compiler.compile(ast).unwrap();
-        let inst = compiler.instructions().to_vec();
-        assert!(eval(&inst, "abcdef", 0, 0));
-        assert!(eval(&inst, "abef", 0, 0));
-        assert!(!eval(&inst, "abc", 0, 0));
+        assert!(compile_and_eval("ab(cd|)ef", "abcdef"));
+        assert!(compile_and_eval("ab(cd|)ef", "abef"));
+        assert!(!compile_and_eval("ab(cd|)ef", "abc"));
     }
 
     #[test]
     fn evaluation_unicode() {
-        let mut lexer = crate::lexer::Lexer::new("正規表現(太郎|次郎)");
-        let mut parser = crate::parser::Parser::new(&mut lexer);
-        let ast = parser.parse().unwrap();
-        let mut compiler = crate::vm::compile::Compiler::new();
-        compiler.compile(ast).unwrap();
-        let inst = compiler.instructions().to_vec();
-        assert!(eval(&inst, "正規表現太郎", 0, 0));
-        assert!(eval(&inst, "正規表現次郎", 0, 0));
-        assert!(!eval(&inst, "正規表現三郎", 0, 0));
+        assert!(compile_and_eval("正規表現(太郎|次郎)", "正規表現太郎"));
+        assert!(compile_and_eval("正規表現(太郎|次郎)", "正規表現次郎"));
+        assert!(!compile_and_eval("正規表現(太郎|次郎)", "正規表現三郎"));
     }
 
     #[test]
     fn evaluation_long_input() {
-        let mut lexer = crate::lexer::Lexer::new("a+b");
-        let mut parser = crate::parser::Parser::new(&mut lexer);
-        let ast = parser.parse().unwrap();
-        let mut compiler = crate::vm::compile::Compiler::new();
-        compiler.compile(ast).unwrap();
-        let inst = compiler.instructions().to_vec();
-        assert!(!eval(&inst, &"a".repeat(10000), 0, 0));
-        assert!(eval(&inst, &format!("{}b", "a".repeat(10000)), 0, 0));
+        assert!(!compile_and_eval("a+b", &"a".repeat(10000)));
+        assert!(compile_and_eval("a+b", &format!("{}b", "a".repeat(10000))));
     }
 
     #[test]
     fn evaluation_empty_string() {
-        let mut lexer = crate::lexer::Lexer::new("a*");
-        let mut parser = crate::parser::Parser::new(&mut lexer);
-        let ast = parser.parse().unwrap();
-        let mut compiler = crate::vm::compile::Compiler::new();
-        compiler.compile(ast).unwrap();
-        let inst = compiler.instructions().to_vec();
-        assert!(eval(&inst, "", 0, 0));
+        assert!(compile_and_eval("a*", ""));
     }
 
     #[test]
     fn evaluation_concat() {
-        let mut lexer = crate::lexer::Lexer::new("abc");
-        let mut parser = crate::parser::Parser::new(&mut lexer);
-        let ast = parser.parse().unwrap();
-        let mut compiler = crate::vm::compile::Compiler::new();
-        compiler.compile(ast).unwrap();
-        let inst = compiler.instructions().to_vec();
-        assert!(eval(&inst, "abc", 0, 0));
-        assert!(!eval(&inst, "ab", 0, 0));
-        assert!(!eval(&inst, "abcd", 0, 0));
-        assert!(!eval(&inst, "", 0, 0));
+        assert!(compile_and_eval("abc", "abc"));
+        assert!(!compile_and_eval("abc", "ab"));
+        assert!(!compile_and_eval("abc", "abcd"));
+        assert!(!compile_and_eval("abc", ""));
     }
 }

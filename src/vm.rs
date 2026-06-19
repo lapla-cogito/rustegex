@@ -4,7 +4,7 @@ mod instruction;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Vm {
-    bytecode: Vec<instruction::Instruction>,
+    bytecode: instruction::Program,
 }
 
 impl Vm {
@@ -13,7 +13,7 @@ impl Vm {
         compiler.compile(ast)?;
 
         Ok(Vm {
-            bytecode: compiler.instructions().to_vec(),
+            bytecode: compiler.finish(),
         })
     }
 
