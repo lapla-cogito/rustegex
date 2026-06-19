@@ -1,28 +1,3 @@
-fn add_state_mask(inst: &crate::vm::instruction::Program, pc: usize, mask: &mut u64) {
-    if pc >= inst.len() {
-        return;
-    }
-    let bit = 1u64 << pc;
-    if *mask & bit != 0 {
-        return;
-    }
-    *mask |= bit;
-
-    match inst.opcode(pc) {
-        crate::vm::instruction::OP_SPLIT => {
-            let x = inst.operand1(pc) as usize;
-            let y = inst.operand2(pc) as usize;
-            add_state_mask(inst, x, mask);
-            add_state_mask(inst, y, mask);
-        }
-        crate::vm::instruction::OP_JMP => {
-            let x = inst.operand1(pc) as usize;
-            add_state_mask(inst, x, mask);
-        }
-        _ => {}
-    }
-}
-
 fn for_each_set_bit(mut mask: u64, mut f: impl FnMut(usize)) {
     while mask != 0 {
         let pc = mask.trailing_zeros() as usize;
@@ -33,8 +8,7 @@ fn for_each_set_bit(mut mask: u64, mut f: impl FnMut(usize)) {
 
 #[inline(never)]
 fn pike_eval_bitmask(inst: &crate::vm::instruction::Program, input: &str) -> bool {
-    let mut current: u64 = 0;
-    add_state_mask(inst, 0, &mut current);
+    let mut current: u64 = inst.epsilon_mask(0);
 
     if input.is_ascii() {
         for &byte in input.as_bytes() {
@@ -46,7 +20,7 @@ fn pike_eval_bitmask(inst: &crate::vm::instruction::Program, input: &str) -> boo
                 if inst.opcode(pc) == crate::vm::instruction::OP_CHAR {
                     let expected = inst.operand1(pc);
                     if expected <= 127 && expected as u8 == byte {
-                        add_state_mask(inst, pc + 1, &mut next);
+                        next |= inst.epsilon_mask(pc + 1);
                     }
                 }
             });
@@ -62,7 +36,7 @@ fn pike_eval_bitmask(inst: &crate::vm::instruction::Program, input: &str) -> boo
                 if inst.opcode(pc) == crate::vm::instruction::OP_CHAR {
                     let expected = inst.char_literal(pc);
                     if expected == ch {
-                        add_state_mask(inst, pc + 1, &mut next);
+                        next |= inst.epsilon_mask(pc + 1);
                     }
                 }
             });
@@ -77,39 +51,6 @@ fn pike_eval_bitmask(inst: &crate::vm::instruction::Program, input: &str) -> boo
         }
     });
     found
-}
-
-fn add_state_vec(
-    inst: &crate::vm::instruction::Program,
-    pc: usize,
-    list: &mut Vec<usize>,
-    gen_arr: &mut [u32],
-    cur_gen: u32,
-) {
-    if pc >= inst.len() {
-        return;
-    }
-    let slot = unsafe { gen_arr.get_unchecked_mut(pc) };
-    if *slot == cur_gen {
-        return;
-    }
-    *slot = cur_gen;
-
-    match inst.opcode(pc) {
-        crate::vm::instruction::OP_SPLIT => {
-            let x = inst.operand1(pc) as usize;
-            let y = inst.operand2(pc) as usize;
-            add_state_vec(inst, x, list, gen_arr, cur_gen);
-            add_state_vec(inst, y, list, gen_arr, cur_gen);
-        }
-        crate::vm::instruction::OP_JMP => {
-            let x = inst.operand1(pc) as usize;
-            add_state_vec(inst, x, list, gen_arr, cur_gen);
-        }
-        _ => {
-            list.push(pc);
-        }
-    }
 }
 
 struct PikeBuffers {
@@ -147,6 +88,22 @@ impl PikeBuffers {
     }
 }
 
+fn extend_epsilon_list(
+    inst: &crate::vm::instruction::Program,
+    pc: usize,
+    list: &mut Vec<usize>,
+    gen_arr: &mut [u32],
+    cur_gen: u32,
+) {
+    for &target in inst.epsilon_list(pc) {
+        let slot = unsafe { gen_arr.get_unchecked_mut(target) };
+        if *slot != cur_gen {
+            *slot = cur_gen;
+            list.push(target);
+        }
+    }
+}
+
 thread_local! {
     static BUFFERS: std::cell::RefCell<PikeBuffers> = std::cell::RefCell::new(PikeBuffers::new(32));
 }
@@ -162,7 +119,7 @@ fn pike_eval_vec(inst: &crate::vm::instruction::Program, input: &str) -> bool {
         bufs.next.clear();
 
         let g = bufs.next_gen();
-        add_state_vec(inst, 0, &mut bufs.current, &mut bufs.gen_arr, g);
+        extend_epsilon_list(inst, 0, &mut bufs.current, &mut bufs.gen_arr, g);
 
         if input.is_ascii() {
             for &byte in input.as_bytes() {
@@ -176,7 +133,7 @@ fn pike_eval_vec(inst: &crate::vm::instruction::Program, input: &str) -> bool {
                     if inst.opcode(pc) == crate::vm::instruction::OP_CHAR {
                         let expected = inst.operand1(pc);
                         if expected <= 127 && expected as u8 == byte {
-                            add_state_vec(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
+                            extend_epsilon_list(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
                         }
                     }
                 }
@@ -195,7 +152,7 @@ fn pike_eval_vec(inst: &crate::vm::instruction::Program, input: &str) -> bool {
                     if inst.opcode(pc) == crate::vm::instruction::OP_CHAR {
                         let expected = inst.char_literal(pc);
                         if expected == ch {
-                            add_state_vec(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
+                            extend_epsilon_list(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
                         }
                     }
                 }
