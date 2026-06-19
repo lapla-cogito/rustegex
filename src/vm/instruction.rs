@@ -8,6 +8,8 @@ pub struct Program {
     opcodes: Vec<u8>,
     op1: Vec<u32>,
     op2: Vec<u32>,
+    epsilon_masks: Vec<u64>,
+    epsilon_lists: Vec<Vec<usize>>,
 }
 
 impl Program {
@@ -25,7 +27,7 @@ impl Program {
         *unsafe { self.op1.get_unchecked(pc) }
     }
 
-    #[inline(always)]
+    #[cfg(test)]
     pub fn operand2(&self, pc: usize) -> u32 {
         *unsafe { self.op2.get_unchecked(pc) }
     }
@@ -33,6 +35,16 @@ impl Program {
     #[inline(always)]
     pub fn char_literal(&self, pc: usize) -> char {
         unsafe { char::from_u32_unchecked(self.operand1(pc)) }
+    }
+
+    #[inline(always)]
+    pub fn epsilon_mask(&self, pc: usize) -> u64 {
+        *unsafe { self.epsilon_masks.get_unchecked(pc) }
+    }
+
+    #[inline(always)]
+    pub fn epsilon_list(&self, pc: usize) -> &[usize] {
+        unsafe { self.epsilon_lists.get_unchecked(pc) }
     }
 }
 
@@ -56,10 +68,25 @@ impl ProgramBuilder {
     }
 
     pub fn build(self) -> Program {
+        let n = self.opcodes.len();
+        let (epsilon_masks, epsilon_lists) = if n <= 64 {
+            (
+                compute_epsilon_masks(&self.opcodes, &self.op1, &self.op2, n),
+                Vec::new(),
+            )
+        } else {
+            (
+                Vec::new(),
+                compute_epsilon_lists(&self.opcodes, &self.op1, &self.op2, n),
+            )
+        };
+
         Program {
             opcodes: self.opcodes,
             op1: self.op1,
             op2: self.op2,
+            epsilon_masks,
+            epsilon_lists,
         }
     }
 
@@ -112,5 +139,127 @@ impl ProgramBuilder {
 
     pub fn patch_jmp(&mut self, pc: usize, target: usize) {
         self.op1[pc] = target as u32;
+    }
+}
+
+fn compute_epsilon_masks(opcodes: &[u8], op1: &[u32], op2: &[u32], n: usize) -> Vec<u64> {
+    let mut masks = vec![0u64; n];
+    for (start, mask) in masks.iter_mut().enumerate() {
+        fill_epsilon_mask(start, mask, opcodes, op1, op2, n);
+    }
+    masks
+}
+
+fn fill_epsilon_mask(
+    pc: usize,
+    mask: &mut u64,
+    opcodes: &[u8],
+    op1: &[u32],
+    op2: &[u32],
+    n: usize,
+) {
+    if pc >= n {
+        return;
+    }
+    let bit = 1u64 << pc;
+    if *mask & bit != 0 {
+        return;
+    }
+    *mask |= bit;
+
+    match opcodes[pc] {
+        OP_SPLIT => {
+            let x = op1[pc] as usize;
+            let y = op2[pc] as usize;
+            fill_epsilon_mask(x, mask, opcodes, op1, op2, n);
+            fill_epsilon_mask(y, mask, opcodes, op1, op2, n);
+        }
+        OP_JMP => {
+            let x = op1[pc] as usize;
+            fill_epsilon_mask(x, mask, opcodes, op1, op2, n);
+        }
+        _ => {}
+    }
+}
+
+fn compute_epsilon_lists(opcodes: &[u8], op1: &[u32], op2: &[u32], n: usize) -> Vec<Vec<usize>> {
+    let mut lists = Vec::with_capacity(n);
+    let mut visited = vec![false; n];
+    for start in 0..n {
+        let mut list = Vec::new();
+        visited.fill(false);
+        fill_epsilon_list(start, &mut list, &mut visited, opcodes, op1, op2, n);
+        lists.push(list);
+    }
+    lists
+}
+
+fn fill_epsilon_list(
+    pc: usize,
+    list: &mut Vec<usize>,
+    visited: &mut [bool],
+    opcodes: &[u8],
+    op1: &[u32],
+    op2: &[u32],
+    n: usize,
+) {
+    if pc >= n {
+        return;
+    }
+    if visited[pc] {
+        return;
+    }
+    visited[pc] = true;
+
+    match opcodes[pc] {
+        OP_SPLIT => {
+            let x = op1[pc] as usize;
+            let y = op2[pc] as usize;
+            fill_epsilon_list(x, list, visited, opcodes, op1, op2, n);
+            fill_epsilon_list(y, list, visited, opcodes, op1, op2, n);
+        }
+        OP_JMP => {
+            let x = op1[pc] as usize;
+            fill_epsilon_list(x, list, visited, opcodes, op1, op2, n);
+        }
+        _ => {
+            list.push(pc);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn program_from_ops(ops: &[(u8, u32, u32)]) -> Program {
+        let mut builder = ProgramBuilder::new();
+        for &(opcode, a, b) in ops {
+            match opcode {
+                OP_CHAR => builder.emit_char(char::from_u32(a).unwrap()),
+                OP_SPLIT => builder.emit_split(a as usize, b as usize),
+                OP_JMP => builder.emit_jmp(a as usize),
+                OP_MATCH => builder.emit_match(),
+                _ => panic!("unknown opcode"),
+            }
+        }
+        builder.build()
+    }
+
+    #[test]
+    fn epsilon_closure_masks() {
+        let program = program_from_ops(&[
+            (OP_SPLIT, 1, 3),
+            (OP_CHAR, 'a' as u32, 0),
+            (OP_JMP, 4, 0),
+            (OP_CHAR, 'b' as u32, 0),
+            (OP_MATCH, 0, 0),
+        ]);
+
+        assert_eq!(program.epsilon_mask(0), 0b01011);
+        assert_eq!(program.epsilon_mask(1), 1 << 1);
+        assert_eq!(program.epsilon_mask(2), 0b10100);
+        assert_eq!(program.epsilon_mask(3), 1 << 3);
+        assert_eq!(program.epsilon_mask(4), 1 << 4);
     }
 }
