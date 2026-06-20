@@ -27,6 +27,7 @@ enum NodeKind {
 struct AstArena {
     nodes: Vec<NodeKind>,
     interner: foldhash::HashMap<NodeKind, AstId>,
+    nullable_cache: Vec<Option<bool>>,
     empty: AstId,
     epsilon: AstId,
 }
@@ -36,6 +37,7 @@ impl AstArena {
         let mut arena = AstArena {
             nodes: Vec::new(),
             interner: foldhash::HashMap::new(),
+            nullable_cache: Vec::new(),
             empty: AstId(0),
             epsilon: AstId(0),
         };
@@ -67,6 +69,7 @@ impl AstArena {
 
         let id = AstId(self.nodes.len() as u32);
         self.nodes.push(kind.clone());
+        self.nullable_cache.push(None);
         self.interner.insert(kind, id);
         id
     }
@@ -74,8 +77,28 @@ impl AstArena {
     fn direct_intern(&mut self, kind: NodeKind) -> AstId {
         let id = AstId(self.nodes.len() as u32);
         self.nodes.push(kind.clone());
+        self.nullable_cache.push(None);
         self.interner.insert(kind, id);
         id
+    }
+
+    fn nullable_of(&mut self, id: AstId) -> bool {
+        if let Some(value) = self.nullable_cache[id.index()] {
+            return value;
+        }
+
+        let value = match self.kind(id).clone() {
+            NodeKind::Empty => false,
+            NodeKind::Epsilon => true,
+            NodeKind::Char(_) => false,
+            NodeKind::Plus(inner) => self.nullable_of(inner),
+            NodeKind::Star(_) => true,
+            NodeKind::Question(_) => true,
+            NodeKind::Or(left, right) => self.nullable_of(left) || self.nullable_of(right),
+            NodeKind::Seq(left, right) => self.nullable_of(left) && self.nullable_of(right),
+        };
+        self.nullable_cache[id.index()] = Some(value);
+        value
     }
 
     fn export(&self, id: AstId) -> crate::parser::AstNode {
@@ -134,12 +157,11 @@ impl Derivative {
             }
         }
 
-        contains_epsilon_id(&arena, state)
+        arena.nullable_of(state)
     }
 
     pub fn is_empty_match(&self) -> bool {
-        let arena = self.arena.borrow();
-        contains_epsilon_id(&arena, self.start)
+        self.arena.borrow_mut().nullable_of(self.start)
     }
 }
 
@@ -252,37 +274,12 @@ fn derivative_id(arena: &mut AstArena, id: AstId, c: char) -> AstId {
     }
 }
 
-fn delta_id(arena: &AstArena, id: AstId) -> AstId {
-    if contains_epsilon_id(arena, id) {
+fn delta_id(arena: &mut AstArena, id: AstId) -> AstId {
+    if arena.nullable_of(id) {
         arena.epsilon()
     } else {
         arena.empty()
     }
-}
-
-fn contains_epsilon_id(arena: &AstArena, id: AstId) -> bool {
-    fn helper(arena: &AstArena, id: AstId, memo: &mut foldhash::HashMap<AstId, bool>) -> bool {
-        if let Some(&value) = memo.get(&id) {
-            return value;
-        }
-
-        let value = match arena.kind(id) {
-            NodeKind::Empty => false,
-            NodeKind::Epsilon => true,
-            NodeKind::Char(_) => false,
-            NodeKind::Plus(inner) => helper(arena, *inner, memo),
-            NodeKind::Star(_) => true,
-            NodeKind::Question(_) => true,
-            NodeKind::Or(left, right) => helper(arena, *left, memo) || helper(arena, *right, memo),
-            NodeKind::Seq(left, right) => helper(arena, *left, memo) && helper(arena, *right, memo),
-        };
-
-        memo.insert(id, value);
-        value
-    }
-
-    let mut memo = foldhash::HashMap::new();
-    helper(arena, id, &mut memo)
 }
 
 fn structural_size(arena: &AstArena, root: AstId) -> usize {
