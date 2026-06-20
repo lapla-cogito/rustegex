@@ -1,6 +1,7 @@
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum AstNode {
     Char(char),
+    Class(crate::charclass::CharClass),
     Plus(Box<AstNode>),
     Star(Box<AstNode>),
     Question(Box<AstNode>),
@@ -14,6 +15,7 @@ impl Clone for AstNode {
     fn clone(&self) -> Self {
         match self {
             AstNode::Char(c) => AstNode::Char(*c),
+            AstNode::Class(class) => AstNode::Class(*class),
             AstNode::Plus(node) => AstNode::Plus(Box::new(*node.clone())),
             AstNode::Star(node) => AstNode::Star(Box::new(*node.clone())),
             AstNode::Question(node) => AstNode::Question(Box::new(*node.clone())),
@@ -137,6 +139,12 @@ impl Parser<'_> {
 
                 Ok(AstNode::Char(c))
             }
+            crate::lexer::Token::Class(class) => {
+                self.consume(crate::lexer::Token::Class(class))?;
+
+                Ok(AstNode::Class(class))
+            }
+            crate::lexer::Token::InvalidEscape => Err(crate::Error::UnexpectedEnd),
             crate::lexer::Token::LeftParen => {
                 self.consume(crate::lexer::Token::LeftParen)?;
                 let ast = self.parse_expr()?;

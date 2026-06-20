@@ -2,30 +2,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="720" height="360" viewBox="0 0 720 360">
 <rect width="100%" height="100%" fill="#ffffff"/>
 <style>text { font-family: ui-sans-serif, system-ui, sans-serif; fill: #1f2937; }.title { font-size: 18px; font-weight: 700; }.subtitle { font-size: 12px; fill: #4b5563; }.label { font-size: 13px; }.value { font-size: 12px; fill: #374151; }.axis { stroke: #9ca3af; stroke-width: 1; }.tick { stroke: #d1d5db; stroke-width: 1; }.tick-label { font-size: 11px; fill: #6b7280; }</style>
-<text class="title" x="170" y="28">case long: Pattern `a+b`, input is 1,000,000 a characters</text>
+<text class="title" x="170" y="28">case meta long: Pattern `\d+`, input is 1,000,000 ASCII digits</text>
 <text class="subtitle" x="170" y="46">Lower is better (log scale)</text>
 <line class="axis" x1="170" y1="316" x2="639" y2="316"/>
 <line class="axis" x1="170" y1="56" x2="170" y2="316"/>
 <line class="tick" x1="170.0" y1="56" x2="170.0" y2="316"/>
-<text class="tick-label" x="170.0" y="334" text-anchor="middle">226.74 µs</text>
+<text class="tick-label" x="170.0" y="334" text-anchor="middle">11.6 ns</text>
 <line class="tick" x1="287.2" y1="56" x2="287.2" y2="316"/>
-<text class="tick-label" x="287.2" y="334" text-anchor="middle">532.54 µs</text>
+<text class="tick-label" x="287.2" y="334" text-anchor="middle">321.9 ns</text>
 <line class="tick" x1="404.5" y1="56" x2="404.5" y2="316"/>
-<text class="tick-label" x="404.5" y="334" text-anchor="middle">1.25 ms</text>
+<text class="tick-label" x="404.5" y="334" text-anchor="middle">8.96 µs</text>
 <line class="tick" x1="521.8" y1="56" x2="521.8" y2="316"/>
-<text class="tick-label" x="521.8" y="334" text-anchor="middle">2.94 ms</text>
+<text class="tick-label" x="521.8" y="334" text-anchor="middle">249.13 µs</text>
 <line class="tick" x1="639.0" y1="56" x2="639.0" y2="316"/>
-<text class="tick-label" x="639.0" y="334" text-anchor="middle">6.90 ms</text>
-<rect x="170.0" y="56.0" width="2.0" height="51.5" fill="#4c78a8" rx="4"/>
+<text class="tick-label" x="639.0" y="334" text-anchor="middle">6.93 ms</text>
+<rect x="170.0" y="56.0" width="348.3" height="51.5" fill="#4c78a8" rx="4"/>
 <text class="label" x="160" y="85.75" text-anchor="end">rustegex DFA</text>
-<text class="value" x="180.0" y="85.75">226.74 µs</text>
-<rect x="170.0" y="125.5" width="347.3" height="51.5" fill="#59a14f" rx="4"/>
+<text class="value" x="526.3" y="85.75">226.20 µs</text>
+<rect x="170.0" y="125.5" width="437.1" height="51.5" fill="#59a14f" rx="4"/>
 <text class="label" x="160" y="155.25" text-anchor="end">rustegex VM</text>
-<text class="value" x="525.3" y="155.25">2.84 ms</text>
+<text class="value" x="615.1" y="155.25">2.80 ms</text>
 <rect x="170.0" y="195.0" width="469.0" height="51.5" fill="#f28e2b" rx="4"/>
 <text class="label" x="160" y="224.75" text-anchor="end">rustegex Derivative</text>
-<text class="value" x="647.0" y="224.75">6.90 ms</text>
-<rect x="170.0" y="264.5" width="235.1" height="51.5" fill="#b279a2" rx="4"/>
+<text class="value" x="647.0" y="224.75">6.93 ms</text>
+<rect x="170.0" y="264.5" width="2.0" height="51.5" fill="#b279a2" rx="4"/>
 <text class="label" x="160" y="294.25" text-anchor="end">regex crate</text>
-<text class="value" x="413.1" y="294.25">1.26 ms</text>
+<text class="value" x="180.0" y="294.25">11.6 ns</text>
 </svg>

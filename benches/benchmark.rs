@@ -101,5 +101,30 @@ fn case_long(c: &mut criterion::Criterion) {
     group.finish();
 }
 
-criterion::criterion_group!(benches, case_1, case_2, case_long);
+fn case_meta(c: &mut criterion::Criterion) {
+    let pattern = r"a\db|\s\w+|.\d";
+    let targets = ["a0b", "a9b", "axb", " foo", "\tBar", "x5", "nope", "a\nb"];
+
+    let mut group = c.benchmark_group("case meta");
+    bench_short(&mut group, pattern, &targets);
+    group.finish();
+}
+
+fn case_meta_long(c: &mut criterion::Criterion) {
+    let pattern = r"\d+";
+    let input = "0123456789".repeat(100_000);
+
+    let mut group = c.benchmark_group("case meta long");
+    bench_long(&mut group, pattern, &input);
+    group.finish();
+}
+
+criterion::criterion_group!(
+    benches,
+    case_1,
+    case_2,
+    case_long,
+    case_meta,
+    case_meta_long,
+);
 criterion::criterion_main!(benches);

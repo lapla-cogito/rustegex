@@ -21,7 +21,8 @@ impl NfaState {
 pub struct Nfa {
     start: NfaStateID,
     accept: std::collections::HashSet<NfaStateID>,
-    transitions: std::collections::HashSet<(NfaStateID, Option<char>, NfaStateID)>,
+    transitions:
+        std::collections::HashSet<(NfaStateID, crate::automaton::label::NfaLabel, NfaStateID)>,
 }
 
 impl Nfa {
@@ -43,16 +44,29 @@ impl Nfa {
 
     pub fn transitions(
         &self,
-    ) -> &std::collections::HashSet<(NfaStateID, Option<char>, NfaStateID)> {
+    ) -> &std::collections::HashSet<(NfaStateID, crate::automaton::label::NfaLabel, NfaStateID)>
+    {
         &self.transitions
     }
 
     fn add_transition(&mut self, from: NfaStateID, char: char, to: NfaStateID) {
-        self.transitions.insert((from, Some(char), to));
+        self.transitions
+            .insert((from, crate::automaton::label::NfaLabel::Char(char), to));
+    }
+
+    fn add_class_transition(
+        &mut self,
+        from: NfaStateID,
+        class: crate::charclass::CharClass,
+        to: NfaStateID,
+    ) {
+        self.transitions
+            .insert((from, crate::automaton::label::NfaLabel::Class(class), to));
     }
 
     fn add_epsilon_transition(&mut self, from: NfaStateID, to: NfaStateID) {
-        self.transitions.insert((from, None, to));
+        self.transitions
+            .insert((from, crate::automaton::label::NfaLabel::Epsilon, to));
     }
 
     fn merge_nfa(&mut self, other: &Nfa) {
@@ -70,6 +84,14 @@ impl Nfa {
                 let accept = state.new_state();
                 let mut nfa = Nfa::new(start, vec![accept]);
                 nfa.add_transition(start, c, accept);
+
+                Ok(nfa)
+            }
+            crate::parser::AstNode::Class(class) => {
+                let start = state.new_state();
+                let accept = state.new_state();
+                let mut nfa = Nfa::new(start, vec![accept]);
+                nfa.add_class_transition(start, class, accept);
 
                 Ok(nfa)
             }
@@ -147,27 +169,17 @@ impl Nfa {
                 Ok(nfa)
             }
             crate::parser::AstNode::Seq(left, right) => {
-                let mut remain_chain: Option<Nfa> = None;
+                let left_nfa = Nfa::new_from_node(*left, state)?;
+                let right_nfa = Nfa::new_from_node(*right, state)?;
 
-                for node in [left, right].iter() {
-                    let mut remain = Nfa::new_from_node(*node.clone(), state)?;
-                    if let Some(mut chain) = remain_chain {
-                        for accept in chain.accept.iter() {
-                            remain.add_epsilon_transition(*accept, remain.start);
-                        }
-                        chain.accept.clear();
-                        chain.merge_nfa(&remain);
-                        remain_chain = Some(chain.clone());
-                    } else {
-                        remain_chain = Some(remain);
-                    }
+                let mut nfa = Nfa::new(left_nfa.start, right_nfa.accept.iter().copied().collect());
+                nfa.transitions.extend(left_nfa.transitions);
+                nfa.transitions.extend(right_nfa.transitions);
+                for &accept in &left_nfa.accept {
+                    nfa.add_epsilon_transition(accept, right_nfa.start);
                 }
 
-                if let Some(remain) = remain_chain {
-                    Ok(remain)
-                } else {
-                    Err(crate::Error::InvalidSeq)
-                }
+                Ok(nfa)
             }
             crate::parser::AstNode::Empty => unreachable!(),
         }
@@ -187,7 +199,10 @@ impl Nfa {
             if !visited.contains(state as usize) {
                 visited.insert(state as usize);
                 for &(from, label, to) in self.transitions() {
-                    if from == state && label.is_none() && !visited.contains(to as usize) {
+                    if from == state
+                        && label == crate::automaton::label::NfaLabel::Epsilon
+                        && !visited.contains(to as usize)
+                    {
                         to_visit.push_back(to);
                     }
                 }
@@ -214,6 +229,19 @@ impl Nfa {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::automaton::label::NfaLabel;
+
+    #[test]
+    fn class_digit() {
+        let nfa = Nfa::new_from_node(
+            crate::parser::AstNode::Class(crate::charclass::CharClass::Digit),
+            &mut NfaState::new(),
+        )
+        .unwrap();
+        assert_eq!(nfa.transitions.len(), 1);
+        let (_, label, _) = nfa.transitions.iter().next().unwrap();
+        assert_eq!(*label, NfaLabel::Class(crate::charclass::CharClass::Digit));
+    }
 
     #[test]
     fn new_from_node() {
@@ -224,7 +252,7 @@ mod tests {
         assert_eq!(nfa.accept, [1].into());
         assert_eq!(
             nfa.transitions,
-            vec![(0, Some('a'), 1)].into_iter().collect()
+            vec![(0, NfaLabel::Char('a'), 1)].into_iter().collect()
         );
 
         // [empty]
@@ -232,7 +260,10 @@ mod tests {
             Nfa::new_from_node(crate::parser::AstNode::Epsilon, &mut NfaState::new()).unwrap();
         assert_eq!(nfa.start, 0);
         assert_eq!(nfa.accept, [1].into());
-        assert_eq!(nfa.transitions, vec![(0, None, 1)].into_iter().collect());
+        assert_eq!(
+            nfa.transitions,
+            vec![(0, NfaLabel::Epsilon, 1)].into_iter().collect()
+        );
 
         // a*
         let nfa = Nfa::new_from_node(
@@ -244,9 +275,13 @@ mod tests {
         assert_eq!(nfa.accept, [1, 2].into());
         assert_eq!(
             nfa.transitions,
-            vec![(0, Some('a'), 1), (2, None, 0), (1, None, 0)]
-                .into_iter()
-                .collect()
+            vec![
+                (0, NfaLabel::Char('a'), 1),
+                (2, NfaLabel::Epsilon, 0),
+                (1, NfaLabel::Epsilon, 0)
+            ]
+            .into_iter()
+            .collect()
         );
 
         // a|b
@@ -263,10 +298,10 @@ mod tests {
         assert_eq!(
             nfa.transitions,
             vec![
-                (0, Some('a'), 1),
-                (2, Some('b'), 3),
-                (4, None, 0),
-                (4, None, 2)
+                (0, NfaLabel::Char('a'), 1),
+                (2, NfaLabel::Char('b'), 3),
+                (4, NfaLabel::Epsilon, 0),
+                (4, NfaLabel::Epsilon, 2)
             ]
             .into_iter()
             .collect()
@@ -282,9 +317,13 @@ mod tests {
         assert_eq!(nfa.accept, [1, 2].into());
         assert_eq!(
             nfa.transitions,
-            vec![(1, None, 0), (0, Some('a'), 1), (2, None, 0)]
-                .into_iter()
-                .collect()
+            vec![
+                (1, NfaLabel::Epsilon, 0),
+                (0, NfaLabel::Char('a'), 1),
+                (2, NfaLabel::Epsilon, 0)
+            ]
+            .into_iter()
+            .collect()
         );
 
         // a+
@@ -298,11 +337,11 @@ mod tests {
         assert_eq!(
             nfa.transitions,
             vec![
-                (1, None, 3),
-                (0, Some('a'), 1),
-                (2, None, 3),
-                (1, None, 0),
-                (2, None, 0)
+                (1, NfaLabel::Epsilon, 3),
+                (0, NfaLabel::Char('a'), 1),
+                (2, NfaLabel::Epsilon, 3),
+                (1, NfaLabel::Epsilon, 0),
+                (2, NfaLabel::Epsilon, 0)
             ]
             .into_iter()
             .collect()
@@ -322,10 +361,9 @@ mod tests {
         assert_eq!(
             nfa.transitions,
             vec![
-                (0, Some('a'), 1),
-                (0, None, 2),
-                (2, Some('b'), 3),
-                (1, None, 2)
+                (0, NfaLabel::Char('a'), 1),
+                (2, NfaLabel::Char('b'), 3),
+                (1, NfaLabel::Epsilon, 2)
             ]
             .into_iter()
             .collect()
@@ -342,10 +380,10 @@ mod tests {
         assert_eq!(
             nfa.transitions,
             vec![
-                (0, Some('a'), 1),
-                (2, Some('b'), 3),
-                (4, None, 0),
-                (4, None, 2)
+                (0, NfaLabel::Char('a'), 1),
+                (2, NfaLabel::Char('b'), 3),
+                (4, NfaLabel::Epsilon, 0),
+                (4, NfaLabel::Epsilon, 2)
             ]
             .into_iter()
             .collect()
@@ -359,12 +397,12 @@ mod tests {
         assert_eq!(
             nfa.transitions,
             vec![
-                (5, None, 0),
-                (0, Some('a'), 1),
-                (2, Some('b'), 3),
-                (3, None, 2),
-                (5, None, 4),
-                (4, None, 2)
+                (5, NfaLabel::Epsilon, 0),
+                (0, NfaLabel::Char('a'), 1),
+                (2, NfaLabel::Char('b'), 3),
+                (3, NfaLabel::Epsilon, 2),
+                (5, NfaLabel::Epsilon, 4),
+                (4, NfaLabel::Epsilon, 2)
             ]
             .into_iter()
             .collect()
@@ -378,14 +416,14 @@ mod tests {
         assert_eq!(
             nfa.transitions,
             vec![
-                (4, None, 2),
-                (3, None, 2),
-                (4, None, 5),
-                (0, Some('a'), 1),
-                (2, Some('b'), 3),
-                (3, None, 5),
-                (6, None, 4),
-                (6, None, 0)
+                (4, NfaLabel::Epsilon, 2),
+                (3, NfaLabel::Epsilon, 2),
+                (4, NfaLabel::Epsilon, 5),
+                (0, NfaLabel::Char('a'), 1),
+                (2, NfaLabel::Char('b'), 3),
+                (3, NfaLabel::Epsilon, 5),
+                (6, NfaLabel::Epsilon, 4),
+                (6, NfaLabel::Epsilon, 0)
             ]
             .into_iter()
             .collect()
@@ -399,12 +437,12 @@ mod tests {
         assert_eq!(
             nfa.transitions,
             vec![
-                (4, None, 2),
-                (5, None, 0),
-                (2, Some('b'), 3),
-                (5, None, 4),
-                (3, None, 2),
-                (0, Some('a'), 1)
+                (4, NfaLabel::Epsilon, 2),
+                (5, NfaLabel::Epsilon, 0),
+                (2, NfaLabel::Char('b'), 3),
+                (5, NfaLabel::Epsilon, 4),
+                (3, NfaLabel::Epsilon, 2),
+                (0, NfaLabel::Char('a'), 1)
             ]
             .into_iter()
             .collect()
@@ -418,13 +456,13 @@ mod tests {
         assert_eq!(
             nfa.transitions,
             vec![
-                (0, Some('a'), 1),
-                (6, None, 4),
-                (6, None, 2),
-                (4, Some('c'), 5),
-                (7, None, 0),
-                (2, Some('b'), 3),
-                (7, None, 6)
+                (0, NfaLabel::Char('a'), 1),
+                (6, NfaLabel::Epsilon, 4),
+                (6, NfaLabel::Epsilon, 2),
+                (4, NfaLabel::Char('c'), 5),
+                (7, NfaLabel::Epsilon, 0),
+                (2, NfaLabel::Char('b'), 3),
+                (7, NfaLabel::Epsilon, 6)
             ]
             .into_iter()
             .collect()
@@ -438,13 +476,12 @@ mod tests {
         assert_eq!(
             nfa.transitions,
             vec![
-                (1, None, 6),
-                (0, None, 6),
-                (0, Some('a'), 1),
-                (2, Some('b'), 3),
-                (6, None, 4),
-                (6, None, 2),
-                (4, Some('c'), 5)
+                (1, NfaLabel::Epsilon, 6),
+                (0, NfaLabel::Char('a'), 1),
+                (2, NfaLabel::Char('b'), 3),
+                (6, NfaLabel::Epsilon, 4),
+                (6, NfaLabel::Epsilon, 2),
+                (4, NfaLabel::Char('c'), 5)
             ]
             .into_iter()
             .collect()
@@ -458,18 +495,18 @@ mod tests {
         assert_eq!(
             nfa.transitions,
             vec![
-                (5, None, 4),
-                (1, None, 4),
-                (2, Some('b'), 3),
-                (7, None, 5),
-                (1, None, 6),
-                (5, None, 6),
-                (4, None, 0),
-                (4, None, 2),
-                (0, Some('a'), 1),
-                (3, None, 6),
-                (6, None, 5),
-                (3, None, 4)
+                (5, NfaLabel::Epsilon, 4),
+                (1, NfaLabel::Epsilon, 4),
+                (2, NfaLabel::Char('b'), 3),
+                (7, NfaLabel::Epsilon, 5),
+                (1, NfaLabel::Epsilon, 6),
+                (5, NfaLabel::Epsilon, 6),
+                (4, NfaLabel::Epsilon, 0),
+                (4, NfaLabel::Epsilon, 2),
+                (0, NfaLabel::Char('a'), 1),
+                (3, NfaLabel::Epsilon, 6),
+                (6, NfaLabel::Epsilon, 5),
+                (3, NfaLabel::Epsilon, 4)
             ]
             .into_iter()
             .collect()
@@ -483,17 +520,17 @@ mod tests {
         assert_eq!(
             nfa.transitions,
             vec![
-                (8, None, 4),
-                (7, None, 5),
-                (6, None, 5),
-                (2, Some('b'), 3),
-                (9, None, 8),
-                (0, Some('a'), 1),
-                (9, None, 0),
-                (5, Some('c'), 6),
-                (8, None, 7),
-                (3, None, 2),
-                (4, None, 2)
+                (8, NfaLabel::Epsilon, 4),
+                (7, NfaLabel::Epsilon, 5),
+                (6, NfaLabel::Epsilon, 5),
+                (2, NfaLabel::Char('b'), 3),
+                (9, NfaLabel::Epsilon, 8),
+                (0, NfaLabel::Char('a'), 1),
+                (9, NfaLabel::Epsilon, 0),
+                (5, NfaLabel::Char('c'), 6),
+                (8, NfaLabel::Epsilon, 7),
+                (3, NfaLabel::Epsilon, 2),
+                (4, NfaLabel::Epsilon, 2)
             ]
             .into_iter()
             .collect()

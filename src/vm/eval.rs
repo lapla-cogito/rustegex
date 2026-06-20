@@ -16,13 +16,17 @@ fn pike_eval_bitmask(inst: &crate::vm::instruction::Program, input: &str) -> boo
                 return false;
             }
             let mut next: u64 = 0;
-            for_each_set_bit(current, |pc| {
-                if inst.opcode(pc) == crate::vm::instruction::OP_CHAR {
+            for_each_set_bit(current, |pc| match inst.opcode(pc) {
+                crate::vm::instruction::OP_CHAR => {
                     let expected = inst.operand1(pc);
                     if expected <= 127 && expected as u8 == byte {
                         next |= inst.epsilon_mask(pc + 1);
                     }
                 }
+                crate::vm::instruction::OP_CLASS if inst.char_class(pc).matches(byte as char) => {
+                    next |= inst.epsilon_mask(pc + 1);
+                }
+                _ => {}
             });
             current = next;
         }
@@ -32,13 +36,16 @@ fn pike_eval_bitmask(inst: &crate::vm::instruction::Program, input: &str) -> boo
                 return false;
             }
             let mut next: u64 = 0;
-            for_each_set_bit(current, |pc| {
-                if inst.opcode(pc) == crate::vm::instruction::OP_CHAR {
-                    let expected = inst.char_literal(pc);
-                    if expected == ch {
+            for_each_set_bit(current, |pc| match inst.opcode(pc) {
+                crate::vm::instruction::OP_CHAR => {
+                    if inst.char_literal(pc) == ch {
                         next |= inst.epsilon_mask(pc + 1);
                     }
                 }
+                crate::vm::instruction::OP_CLASS if inst.char_class(pc).matches(ch) => {
+                    next |= inst.epsilon_mask(pc + 1);
+                }
+                _ => {}
             });
             current = next;
         }
@@ -130,11 +137,25 @@ fn pike_eval_vec(inst: &crate::vm::instruction::Program, input: &str) -> bool {
                 let len = bufs.current.len();
                 for i in 0..len {
                     let pc = *unsafe { bufs.current.get_unchecked(i) };
-                    if inst.opcode(pc) == crate::vm::instruction::OP_CHAR {
-                        let expected = inst.operand1(pc);
-                        if expected <= 127 && expected as u8 == byte {
+                    match inst.opcode(pc) {
+                        crate::vm::instruction::OP_CHAR => {
+                            let expected = inst.operand1(pc);
+                            if expected <= 127 && expected as u8 == byte {
+                                extend_epsilon_list(
+                                    inst,
+                                    pc + 1,
+                                    &mut bufs.next,
+                                    &mut bufs.gen_arr,
+                                    g,
+                                );
+                            }
+                        }
+                        crate::vm::instruction::OP_CLASS
+                            if inst.char_class(pc).matches(byte as char) =>
+                        {
                             extend_epsilon_list(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
                         }
+                        _ => {}
                     }
                 }
                 std::mem::swap(&mut bufs.current, &mut bufs.next);
@@ -149,11 +170,22 @@ fn pike_eval_vec(inst: &crate::vm::instruction::Program, input: &str) -> bool {
                 let len = bufs.current.len();
                 for i in 0..len {
                     let pc = *unsafe { bufs.current.get_unchecked(i) };
-                    if inst.opcode(pc) == crate::vm::instruction::OP_CHAR {
-                        let expected = inst.char_literal(pc);
-                        if expected == ch {
+                    match inst.opcode(pc) {
+                        crate::vm::instruction::OP_CHAR => {
+                            if inst.char_literal(pc) == ch {
+                                extend_epsilon_list(
+                                    inst,
+                                    pc + 1,
+                                    &mut bufs.next,
+                                    &mut bufs.gen_arr,
+                                    g,
+                                );
+                            }
+                        }
+                        crate::vm::instruction::OP_CLASS if inst.char_class(pc).matches(ch) => {
                             extend_epsilon_list(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
                         }
+                        _ => {}
                     }
                 }
                 std::mem::swap(&mut bufs.current, &mut bufs.next);

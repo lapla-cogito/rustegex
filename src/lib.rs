@@ -1,4 +1,5 @@
 mod automaton;
+mod charclass;
 mod derivative;
 mod error;
 mod lexer;
@@ -507,5 +508,117 @@ mod tests {
     fn invalid_method_name() {
         let regex = Engine::new("a", "正規表現太郎");
         assert!(regex.is_err());
+    }
+
+    fn assert_match_all(method: &'static str, pattern: &str, yes: &[&str], no: &[&str]) {
+        let engine = Engine::new(pattern, method).unwrap();
+        for input in yes {
+            assert!(
+                engine.is_match(input),
+                "method={method} pattern={pattern:?} input={input:?}"
+            );
+        }
+        for input in no {
+            assert!(
+                !engine.is_match(input),
+                "method={method} pattern={pattern:?} input={input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn metacharacters_dfa() {
+        let cases = [
+            (r"\d", &["0", "9"] as &[&str], &["", "a"] as &[&str]),
+            (
+                r"\w",
+                &["a", "Z", "_", "9"] as &[&str],
+                &["", "-", "♥"] as &[&str],
+            ),
+            (r"\s", &[" ", "\t"] as &[&str], &["", "a"] as &[&str]),
+            (
+                r"\d+",
+                &["0", "42", "999"] as &[&str],
+                &["a", "4a"] as &[&str],
+            ),
+            (
+                r"\w+",
+                &["a", "Z9", "foo_bar"] as &[&str],
+                &["-", "♥"] as &[&str],
+            ),
+            (r"\s+", &[" ", "\t\n"] as &[&str], &["a", "a b"] as &[&str]),
+            (
+                "a.b",
+                &["a b", "a\tb", "a0b"] as &[&str],
+                &["ab", "a\nb"] as &[&str],
+            ),
+        ];
+        for (pattern, yes, no) in cases {
+            assert_match_all("dfa", pattern, yes, no);
+        }
+    }
+
+    #[test]
+    fn metacharacters_vm() {
+        let cases = [
+            (r"\d", &["0", "9"] as &[&str], &["", "a"] as &[&str]),
+            (
+                r"\w",
+                &["a", "Z", "_", "9"] as &[&str],
+                &["", "-", "♥"] as &[&str],
+            ),
+            (r"\s", &[" ", "\t"] as &[&str], &["", "a"] as &[&str]),
+            (
+                r"\d+",
+                &["0", "42", "999"] as &[&str],
+                &["a", "4a"] as &[&str],
+            ),
+            (
+                r"\w+",
+                &["a", "Z9", "foo_bar"] as &[&str],
+                &["-", "♥"] as &[&str],
+            ),
+            (r"\s+", &[" ", "\t\n"] as &[&str], &["a", "a b"] as &[&str]),
+            (
+                "a.b",
+                &["a b", "a\tb", "a0b"] as &[&str],
+                &["ab", "a\nb"] as &[&str],
+            ),
+        ];
+        for (pattern, yes, no) in cases {
+            assert_match_all("vm", pattern, yes, no);
+        }
+    }
+
+    #[test]
+    fn metacharacters_derivative() {
+        let cases = [
+            (r"\d", &["0", "9"] as &[&str], &["", "a"] as &[&str]),
+            (
+                r"\w",
+                &["a", "Z", "_", "9"] as &[&str],
+                &["", "-", "♥"] as &[&str],
+            ),
+            (r"\s", &[" ", "\t"] as &[&str], &["", "a"] as &[&str]),
+            (
+                r"\d+",
+                &["0", "42", "999"] as &[&str],
+                &["a", "4a"] as &[&str],
+            ),
+            (
+                r"\w+",
+                &["a", "Z9", "foo_bar"] as &[&str],
+                &["-", "♥"] as &[&str],
+            ),
+            (r"\s+", &[" ", "\t\n"] as &[&str], &["a", "a b"] as &[&str]),
+            (
+                "a.b",
+                &["a b", "a\tb", "a0b"] as &[&str],
+                &["ab", "a\nb"] as &[&str],
+            ),
+        ];
+        for (pattern, yes, no) in cases {
+            assert_match_all("derivative", pattern, yes, no);
+        }
     }
 }
