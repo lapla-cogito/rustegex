@@ -252,32 +252,36 @@ fn derivative_with_cache(
 }
 
 fn derivative_id(arena: &mut AstArena, id: AstId, c: char) -> AstId {
-    match arena.kind(id).clone() {
+    match arena.kind(id) {
         NodeKind::Empty | NodeKind::Epsilon => arena.empty(),
         NodeKind::Char(ch) => {
-            if ch == c {
+            if *ch == c {
                 arena.epsilon()
             } else {
                 arena.empty()
             }
         }
         NodeKind::Plus(inner) => {
+            let inner = *inner;
             let head = derivative_id(arena, inner, c);
             let tail = mk_star(arena, inner);
             mk_seq(arena, head, tail)
         }
         NodeKind::Star(inner) => {
+            let inner = *inner;
             let head = derivative_id(arena, inner, c);
             let tail = mk_star(arena, inner);
             mk_seq(arena, head, tail)
         }
-        NodeKind::Question(inner) => derivative_id(arena, inner, c),
+        NodeKind::Question(inner) => derivative_id(arena, *inner, c),
         NodeKind::Or(left, right) => {
+            let (left, right) = (*left, *right);
             let dl = derivative_id(arena, left, c);
             let dr = derivative_id(arena, right, c);
             mk_or(arena, dl, dr)
         }
         NodeKind::Seq(left, right) => {
+            let (left, right) = (*left, *right);
             let left_derivative = derivative_id(arena, left, c);
             let first = mk_seq(arena, left_derivative, right);
 
