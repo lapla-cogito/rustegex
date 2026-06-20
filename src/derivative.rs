@@ -28,6 +28,7 @@ struct AstArena {
     nodes: Vec<NodeKind>,
     interner: foldhash::HashMap<NodeKind, AstId>,
     nullable_cache: Vec<Option<bool>>,
+    structural_size_cache: Vec<Option<usize>>,
     empty: AstId,
     epsilon: AstId,
 }
@@ -38,6 +39,7 @@ impl AstArena {
             nodes: Vec::new(),
             interner: foldhash::HashMap::new(),
             nullable_cache: Vec::new(),
+            structural_size_cache: Vec::new(),
             empty: AstId(0),
             epsilon: AstId(0),
         };
@@ -70,6 +72,7 @@ impl AstArena {
         let id = AstId(self.nodes.len() as u32);
         self.nodes.push(kind.clone());
         self.nullable_cache.push(None);
+        self.structural_size_cache.push(None);
         self.interner.insert(kind, id);
         id
     }
@@ -78,6 +81,7 @@ impl AstArena {
         let id = AstId(self.nodes.len() as u32);
         self.nodes.push(kind.clone());
         self.nullable_cache.push(None);
+        self.structural_size_cache.push(None);
         self.interner.insert(kind, id);
         id
     }
@@ -99,6 +103,18 @@ impl AstArena {
         };
         self.nullable_cache[id.index()] = Some(value);
         value
+    }
+
+    fn structural_size_of(&mut self, root: AstId) -> usize {
+        if let Some(size) = self.structural_size_cache[root.index()] {
+            return size;
+        }
+
+        let mut visited = foldhash::HashSet::new();
+        structural_size_dfs(self, root, &mut visited);
+        let size = visited.len();
+        self.structural_size_cache[root.index()] = Some(size);
+        size
     }
 
     fn export(&self, id: AstId) -> crate::parser::AstNode {
@@ -152,7 +168,7 @@ impl Derivative {
         for ch in input.chars() {
             state = derivative_with_cache(&mut arena, state, ch, &mut memo);
 
-            if structural_size(&arena, state) > self.max_ast_size {
+            if arena.structural_size_of(state) > self.max_ast_size {
                 return match_fallback(&self.canonical, input);
             }
         }
@@ -282,27 +298,21 @@ fn delta_id(arena: &mut AstArena, id: AstId) -> AstId {
     }
 }
 
-fn structural_size(arena: &AstArena, root: AstId) -> usize {
-    fn dfs(arena: &AstArena, id: AstId, visited: &mut foldhash::HashSet<AstId>) {
-        if !visited.insert(id) {
-            return;
-        }
-
-        match arena.kind(id) {
-            NodeKind::Plus(inner) | NodeKind::Star(inner) | NodeKind::Question(inner) => {
-                dfs(arena, *inner, visited)
-            }
-            NodeKind::Or(left, right) | NodeKind::Seq(left, right) => {
-                dfs(arena, *left, visited);
-                dfs(arena, *right, visited);
-            }
-            NodeKind::Empty | NodeKind::Epsilon | NodeKind::Char(_) => {}
-        }
+fn structural_size_dfs(arena: &AstArena, id: AstId, visited: &mut foldhash::HashSet<AstId>) {
+    if !visited.insert(id) {
+        return;
     }
 
-    let mut visited = foldhash::HashSet::new();
-    dfs(arena, root, &mut visited);
-    visited.len()
+    match arena.kind(id) {
+        NodeKind::Plus(inner) | NodeKind::Star(inner) | NodeKind::Question(inner) => {
+            structural_size_dfs(arena, *inner, visited)
+        }
+        NodeKind::Or(left, right) | NodeKind::Seq(left, right) => {
+            structural_size_dfs(arena, *left, visited);
+            structural_size_dfs(arena, *right, visited);
+        }
+        NodeKind::Empty | NodeKind::Epsilon | NodeKind::Char(_) => {}
+    }
 }
 
 fn mk_char(arena: &mut AstArena, c: char) -> AstId {
