@@ -1,142 +1,105 @@
-fn dfa_1(c: &mut criterion::Criterion) {
-    let target_regex = "(p(erl|ython|hp)|ruby)";
-    let targets = vec!["perl", "python", "ruby", "rust"];
-
-    let regex = rustegex::Engine::new(target_regex, "dfa").unwrap();
-
-    c.bench_function("DFA 1", |b| {
+fn bench_short(
+    group: &mut criterion::BenchmarkGroup<criterion::measurement::WallTime>,
+    pattern: &str,
+    targets: &[&str],
+) {
+    let dfa = rustegex::Engine::new(pattern, "dfa").unwrap();
+    group.bench_function("rustegex/dfa", |b| {
         b.iter(|| {
-            for target in &targets {
-                regex.is_match(target);
+            for target in targets {
+                dfa.is_match(target);
             }
-        })
+        });
     });
-}
 
-fn dfa_2(c: &mut criterion::Criterion) {
-    let target_regex = "ab(cd|)ef|g*|h+";
-    let targets = vec!["abcdef", "abef", "abefg", "abefgh", "", "ggggg", "hhhh"];
-
-    let regex = rustegex::Engine::new(target_regex, "dfa").unwrap();
-
-    c.bench_function("DFA 2", |b| {
+    let vm = rustegex::Engine::new(pattern, "vm").unwrap();
+    group.bench_function("rustegex/vm", |b| {
         b.iter(|| {
-            for target in &targets {
-                regex.is_match(target);
+            for target in targets {
+                vm.is_match(target);
             }
-        })
+        });
     });
-}
 
-fn dfa_long(c: &mut criterion::Criterion) {
-    let target_regex = "a+b";
-
-    let regex = rustegex::Engine::new(target_regex, "dfa").unwrap();
-    let input = "a".repeat(1000000);
-
-    c.bench_function("DFA long", |b| {
+    let derivative = rustegex::Engine::new(pattern, "derivative").unwrap();
+    group.bench_function("rustegex/derivative", |b| {
         b.iter(|| {
-            regex.is_match(input.as_str());
-        })
-    });
-}
-
-fn vm_1(c: &mut criterion::Criterion) {
-    let target_regex = "(p(erl|ython|hp)|ruby)";
-    let targets = vec!["perl", "python", "ruby", "rust"];
-
-    let regex = rustegex::Engine::new(target_regex, "vm").unwrap();
-
-    c.bench_function("VM 1", |b| {
-        b.iter(|| {
-            for target in &targets {
-                regex.is_match(target);
+            for target in targets {
+                derivative.is_match(target);
             }
-        })
+        });
     });
-}
 
-fn vm_2(c: &mut criterion::Criterion) {
-    let target_regex = "ab(cd|)ef|g*|h+";
-    let targets = vec!["abcdef", "abef", "abefg", "abefgh", "", "ggggg", "hhhh"];
-
-    let regex = rustegex::Engine::new(target_regex, "vm").unwrap();
-
-    c.bench_function("VM 2", |b| {
+    let re = regex::Regex::new(pattern).unwrap();
+    group.bench_function("regex", |b| {
         b.iter(|| {
-            for target in &targets {
-                regex.is_match(target);
+            for target in targets {
+                re.is_match(target);
             }
-        })
+        });
     });
 }
 
-fn vm_long(c: &mut criterion::Criterion) {
-    let target_regex = "a+b";
-
-    let regex = rustegex::Engine::new(target_regex, "vm").unwrap();
-    let input = "a".repeat(1000000);
-
-    c.bench_function("VM long", |b| {
+fn bench_long(
+    group: &mut criterion::BenchmarkGroup<criterion::measurement::WallTime>,
+    pattern: &str,
+    input: &str,
+) {
+    let dfa = rustegex::Engine::new(pattern, "dfa").unwrap();
+    group.bench_function("rustegex/dfa", |b| {
         b.iter(|| {
-            regex.is_match(input.as_str());
-        })
+            dfa.is_match(input);
+        });
     });
-}
 
-fn derivative_1(c: &mut criterion::Criterion) {
-    let target_regex = "(p(erl|ython|hp)|ruby)";
-    let targets = vec!["perl", "python", "ruby", "rust"];
-
-    let regex = rustegex::Engine::new(target_regex, "derivative").unwrap();
-
-    c.bench_function("Derivative 1", |b| {
+    let vm = rustegex::Engine::new(pattern, "vm").unwrap();
+    group.bench_function("rustegex/vm", |b| {
         b.iter(|| {
-            for target in &targets {
-                regex.is_match(target);
-            }
-        })
+            vm.is_match(input);
+        });
     });
-}
 
-fn derivative_2(c: &mut criterion::Criterion) {
-    let target_regex = "ab(cd|)ef|g*|h+";
-    let targets = vec!["abcdef", "abef", "abefg", "abefgh", "", "ggggg", "hhhh"];
-
-    let regex = rustegex::Engine::new(target_regex, "derivative").unwrap();
-
-    c.bench_function("Derivative 2", |b| {
+    let derivative = rustegex::Engine::new(pattern, "derivative").unwrap();
+    group.bench_function("rustegex/derivative", |b| {
         b.iter(|| {
-            for target in &targets {
-                regex.is_match(target);
-            }
-        })
+            derivative.is_match(input);
+        });
     });
-}
 
-fn derivative_long(c: &mut criterion::Criterion) {
-    let target_regex = "a+b";
-
-    let regex = rustegex::Engine::new(target_regex, "derivative").unwrap();
-    let input = "a".repeat(1000000);
-
-    c.bench_function("Derivative long", |b| {
+    let re = regex::Regex::new(pattern).unwrap();
+    group.bench_function("regex", |b| {
         b.iter(|| {
-            regex.is_match(input.as_str());
-        })
+            re.is_match(input);
+        });
     });
 }
 
-criterion::criterion_group!(
-    benches,
-    dfa_1,
-    dfa_2,
-    dfa_long,
-    vm_1,
-    vm_2,
-    vm_long,
-    derivative_1,
-    derivative_2,
-    derivative_long
-);
+fn case_1(c: &mut criterion::Criterion) {
+    let pattern = "(p(erl|ython|hp)|ruby)";
+    let targets = ["perl", "python", "ruby", "rust"];
+
+    let mut group = c.benchmark_group("case 1");
+    bench_short(&mut group, pattern, &targets);
+    group.finish();
+}
+
+fn case_2(c: &mut criterion::Criterion) {
+    let pattern = "ab(cd|)ef|g*|h+";
+    let targets = ["abcdef", "abef", "abefg", "abefgh", "", "ggggg", "hhhh"];
+
+    let mut group = c.benchmark_group("case 2");
+    bench_short(&mut group, pattern, &targets);
+    group.finish();
+}
+
+fn case_long(c: &mut criterion::Criterion) {
+    let pattern = "a+b";
+    let input = "a".repeat(1_000_000);
+
+    let mut group = c.benchmark_group("case long");
+    bench_long(&mut group, pattern, &input);
+    group.finish();
+}
+
+criterion::criterion_group!(benches, case_1, case_2, case_long);
 criterion::criterion_main!(benches);
