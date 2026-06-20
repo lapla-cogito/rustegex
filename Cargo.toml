@@ -14,6 +14,7 @@ mimalloc = "0.1.48"
 
 [dev-dependencies]
 criterion = "0.8.0"
+regex = "1.12.4"
 
 [[bench]]
 name = "benchmark"

@@ -120,8 +120,34 @@ $ cargo test
 ## Run Benchmarks
 
 ```bash
-$ cargo bench
+$ cargo bench --bench benchmark
 ```
+
+<!-- bench-graphs:begin -->
+
+## Benchmarks
+
+Comparison against the [`regex`](https://crates.io/crates/regex) crate.
+
+### case 1
+
+Pattern `(p(erl|ython|hp)|ruby)`
+
+![case 1](img/case-1.svg)
+
+### case 2
+
+Pattern `ab(cd|)ef|g*|h+`
+
+![case 2](img/case-2.svg)
+
+### case long
+
+Pattern `a+b`, input is 1,000,000 a characters
+
+![case long](img/case-long.svg)
+
+<!-- bench-graphs:end -->
 
 ## License
 
