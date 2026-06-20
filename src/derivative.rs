@@ -144,6 +144,7 @@ pub struct Derivative {
     start: AstId,
     canonical: crate::parser::AstNode,
     max_ast_size: usize,
+    derivative_memo: std::cell::RefCell<foldhash::HashMap<(AstId, char), AstId>>,
 }
 
 impl Derivative {
@@ -157,12 +158,14 @@ impl Derivative {
             start,
             canonical,
             max_ast_size: DEFAULT_MAX_AST_SIZE,
+            derivative_memo: std::cell::RefCell::new(foldhash::HashMap::new()),
         }
     }
 
     pub fn is_match(&self, input: &str) -> bool {
         let mut arena = self.arena.borrow_mut();
-        let mut memo: foldhash::HashMap<(AstId, char), AstId> = foldhash::HashMap::new();
+        let mut memo = self.derivative_memo.borrow_mut();
+        memo.clear();
         let mut state = self.start;
 
         for ch in input.chars() {
