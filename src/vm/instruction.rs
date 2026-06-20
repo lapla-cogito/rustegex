@@ -2,6 +2,7 @@ pub const OP_CHAR: u8 = 0;
 pub const OP_SPLIT: u8 = 1;
 pub const OP_JMP: u8 = 2;
 pub const OP_MATCH: u8 = 3;
+pub const OP_CLASS: u8 = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
@@ -35,6 +36,16 @@ impl Program {
     #[inline(always)]
     pub fn char_literal(&self, pc: usize) -> char {
         unsafe { char::from_u32_unchecked(self.operand1(pc)) }
+    }
+
+    #[inline(always)]
+    pub fn char_class(&self, pc: usize) -> crate::charclass::CharClass {
+        match self.operand1(pc) {
+            0 => crate::charclass::CharClass::Any,
+            1 => crate::charclass::CharClass::Digit,
+            2 => crate::charclass::CharClass::Word,
+            _ => crate::charclass::CharClass::Space,
+        }
     }
 
     #[inline(always)]
@@ -103,6 +114,16 @@ impl ProgramBuilder {
 
     pub fn emit_char(&mut self, c: char) {
         self.emit(OP_CHAR, c as u32, 0);
+    }
+
+    pub fn emit_class(&mut self, class: crate::charclass::CharClass) {
+        let id = match class {
+            crate::charclass::CharClass::Any => 0,
+            crate::charclass::CharClass::Digit => 1,
+            crate::charclass::CharClass::Word => 2,
+            crate::charclass::CharClass::Space => 3,
+        };
+        self.emit(OP_CLASS, id, 0);
     }
 
     pub fn emit_split(&mut self, x: usize, y: usize) {

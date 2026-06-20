@@ -1,12 +1,14 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Token {
     Character(char),
+    Class(crate::charclass::CharClass),
     UnionOperator,
     StarOperator,
     PlusOperator,
     QuestionOperator,
     LeftParen,
     RightParen,
+    InvalidEscape,
     Empty,
 }
 
@@ -28,13 +30,23 @@ impl Lexer<'_> {
         };
 
         match char {
-            '\\' => Token::Character(self.input.next().unwrap()),
+            '\\' => match self.input.next() {
+                Some(escaped) => {
+                    if let Some(class) = crate::charclass::CharClass::from_escape(escaped) {
+                        Token::Class(class)
+                    } else {
+                        Token::Character(escaped)
+                    }
+                }
+                None => Token::InvalidEscape,
+            },
             '|' => Token::UnionOperator,
             '(' => Token::LeftParen,
             ')' => Token::RightParen,
             '*' => Token::StarOperator,
             '+' => Token::PlusOperator,
             '?' => Token::QuestionOperator,
+            '.' => Token::Class(crate::charclass::CharClass::Any),
             _ => Token::Character(char),
         }
     }
@@ -44,12 +56,17 @@ impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Token::Character(c) => write!(f, "{c}"),
+            Token::Class(crate::charclass::CharClass::Any) => write!(f, "."),
+            Token::Class(crate::charclass::CharClass::Digit) => write!(f, r"\d"),
+            Token::Class(crate::charclass::CharClass::Word) => write!(f, r"\w"),
+            Token::Class(crate::charclass::CharClass::Space) => write!(f, r"\s"),
             Token::UnionOperator => write!(f, "|"),
             Token::StarOperator => write!(f, "*"),
             Token::PlusOperator => write!(f, "+"),
             Token::QuestionOperator => write!(f, "?"),
             Token::LeftParen => write!(f, "("),
             Token::RightParen => write!(f, ")"),
+            Token::InvalidEscape => write!(f, r"[invalid escape]"),
             Token::Empty => write!(f, "[empty]"),
         }
     }
@@ -140,6 +157,32 @@ mod tests {
         assert_eq!(lexer.scan(), Token::UnionOperator);
         assert_eq!(lexer.scan(), Token::Character('b'));
         assert_eq!(lexer.scan(), Token::Character('+'));
+        assert_eq!(lexer.scan(), Token::Empty);
+    }
+
+    #[test]
+    fn metacharacters() {
+        let mut lexer = Lexer::new(r"\d|\w|\s|.");
+        assert_eq!(
+            lexer.scan(),
+            Token::Class(crate::charclass::CharClass::Digit)
+        );
+        assert_eq!(lexer.scan(), Token::UnionOperator);
+        assert_eq!(
+            lexer.scan(),
+            Token::Class(crate::charclass::CharClass::Word)
+        );
+        assert_eq!(lexer.scan(), Token::UnionOperator);
+        assert_eq!(
+            lexer.scan(),
+            Token::Class(crate::charclass::CharClass::Space)
+        );
+        assert_eq!(lexer.scan(), Token::UnionOperator);
+        assert_eq!(lexer.scan(), Token::Class(crate::charclass::CharClass::Any));
+        assert_eq!(lexer.scan(), Token::Empty);
+
+        let mut lexer = Lexer::new(r"\.");
+        assert_eq!(lexer.scan(), Token::Character('.'));
         assert_eq!(lexer.scan(), Token::Empty);
     }
 

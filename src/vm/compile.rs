@@ -18,6 +18,9 @@ impl Compiler {
             crate::parser::AstNode::Char(c) => {
                 self.builder.emit_char(c);
             }
+            crate::parser::AstNode::Class(class) => {
+                self.builder.emit_class(class);
+            }
             crate::parser::AstNode::Plus(node) => {
                 let split = self.builder.reserve_split();
                 let start = self.builder.pc();

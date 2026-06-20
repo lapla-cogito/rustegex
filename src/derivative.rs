@@ -17,6 +17,7 @@ enum NodeKind {
     Empty,
     Epsilon,
     Char(char),
+    Class(crate::charclass::CharClass),
     Plus(AstId),
     Star(AstId),
     Question(AstId),
@@ -94,7 +95,7 @@ impl AstArena {
         let value = match self.kind(id).clone() {
             NodeKind::Empty => false,
             NodeKind::Epsilon => true,
-            NodeKind::Char(_) => false,
+            NodeKind::Char(_) | NodeKind::Class(_) => false,
             NodeKind::Plus(inner) => self.nullable_of(inner),
             NodeKind::Star(_) => true,
             NodeKind::Question(_) => true,
@@ -122,6 +123,7 @@ impl AstArena {
             NodeKind::Empty => crate::parser::AstNode::Empty,
             NodeKind::Epsilon => crate::parser::AstNode::Epsilon,
             NodeKind::Char(c) => crate::parser::AstNode::Char(*c),
+            NodeKind::Class(class) => crate::parser::AstNode::Class(*class),
             NodeKind::Plus(inner) => crate::parser::AstNode::Plus(Box::new(self.export(*inner))),
             NodeKind::Star(inner) => crate::parser::AstNode::Star(Box::new(self.export(*inner))),
             NodeKind::Question(inner) => {
@@ -214,6 +216,7 @@ fn from_parser(arena: &mut AstArena, node: &crate::parser::AstNode) -> AstId {
         crate::parser::AstNode::Empty => arena.empty(),
         crate::parser::AstNode::Epsilon => arena.epsilon(),
         crate::parser::AstNode::Char(c) => mk_char(arena, *c),
+        crate::parser::AstNode::Class(class) => mk_class(arena, *class),
         crate::parser::AstNode::Plus(inner) => {
             let inner_id = from_parser(arena, inner);
             mk_plus(arena, inner_id)
@@ -259,6 +262,13 @@ fn derivative_id(arena: &mut AstArena, id: AstId, c: char) -> AstId {
         NodeKind::Empty | NodeKind::Epsilon => arena.empty(),
         NodeKind::Char(ch) => {
             if *ch == c {
+                arena.epsilon()
+            } else {
+                arena.empty()
+            }
+        }
+        NodeKind::Class(class) => {
+            if class.matches(c) {
                 arena.epsilon()
             } else {
                 arena.empty()
@@ -318,12 +328,16 @@ fn structural_size_dfs(arena: &AstArena, id: AstId, visited: &mut foldhash::Hash
             structural_size_dfs(arena, *left, visited);
             structural_size_dfs(arena, *right, visited);
         }
-        NodeKind::Empty | NodeKind::Epsilon | NodeKind::Char(_) => {}
+        NodeKind::Empty | NodeKind::Epsilon | NodeKind::Char(_) | NodeKind::Class(_) => {}
     }
 }
 
 fn mk_char(arena: &mut AstArena, c: char) -> AstId {
     arena.intern(NodeKind::Char(c))
+}
+
+fn mk_class(arena: &mut AstArena, class: crate::charclass::CharClass) -> AstId {
+    arena.intern(NodeKind::Class(class))
 }
 
 fn mk_plus(arena: &mut AstArena, inner: AstId) -> AstId {
@@ -395,6 +409,13 @@ fn derivative_parser(ast: &crate::parser::AstNode, c: char) -> crate::parser::As
         }
         crate::parser::AstNode::Char(ch) => {
             if *ch == c {
+                crate::parser::AstNode::Epsilon
+            } else {
+                crate::parser::AstNode::Empty
+            }
+        }
+        crate::parser::AstNode::Class(class) => {
+            if class.matches(c) {
                 crate::parser::AstNode::Epsilon
             } else {
                 crate::parser::AstNode::Empty
@@ -507,7 +528,9 @@ fn contain_epsilon_parser(ast: &crate::parser::AstNode) -> bool {
         crate::parser::AstNode::Epsilon
         | crate::parser::AstNode::Star(_)
         | crate::parser::AstNode::Question(_) => true,
-        crate::parser::AstNode::Empty | crate::parser::AstNode::Char(_) => false,
+        crate::parser::AstNode::Empty
+        | crate::parser::AstNode::Char(_)
+        | crate::parser::AstNode::Class(_) => false,
         crate::parser::AstNode::Plus(inner) => contain_epsilon_parser(inner),
         crate::parser::AstNode::Or(left, right) => {
             contain_epsilon_parser(left) || contain_epsilon_parser(right)

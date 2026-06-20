@@ -6,12 +6,22 @@ A hobby regular expression engine in Rust.
     - DFA-based engine
         - Converts regex to NFA, then NFA to DFA via subset construction
         - Matching is a single linear scan over the input with no backtracking
+        - Character classes are expanded into the ASCII transition table at compile time
     - VM-based engine
         - Pike VM (Thompson NFA lockstep simulation)
         - Processes all active NFA states simultaneously per input character
     - Derivative-based engine
         - Matches by repeatedly computing Brzozowski's derivative of the pattern
-- All engines currently support `*`, `+`, `?`, `|`, `()`, `\` (escape), and Unicode characters.
+- Supported syntax:
+    - Quantifiers: `*`, `+`, `?`
+    - Alternation and grouping: `|`, `()`
+    - Escapes: `\` (for example `\*`, `\|`, `\.`)
+    - Metacharacters:
+        - `.` — any character except newline
+        - `\d` — ASCII digit `[0-9]`
+        - `\w` — ASCII word character `[a-zA-Z0-9_]`
+        - `\s` — ASCII whitespace
+    - Unicode literal characters in patterns and inputs
 
 ## Example
 
@@ -40,6 +50,17 @@ assert!(!regex.is_match("a"));
 let regex = rustegex::Engine::new(r"a\|b\*", "dfa").unwrap();
 assert!(regex.is_match("a|b*"));
 assert!(!regex.is_match("ab"));
+
+let regex = rustegex::Engine::new(r"a\db", "dfa").unwrap();
+assert!(regex.is_match("a0b"));
+assert!(regex.is_match("a9b"));
+assert!(!regex.is_match("axb"));
+
+let regex = rustegex::Engine::new("a.b", "dfa").unwrap();
+assert!(regex.is_match("a b"));
+assert!(regex.is_match("axb"));
+assert!(!regex.is_match("ab"));
+assert!(!regex.is_match("a\nb"));
 
 let regex = rustegex::Engine::new("正規表現(太郎|次郎)", "dfa").unwrap();
 assert!(regex.is_match("正規表現太郎"));
@@ -73,6 +94,10 @@ let regex = rustegex::Engine::new(r"a\|b\*", "vm").unwrap();
 assert!(regex.is_match("a|b*"));
 assert!(!regex.is_match("ab"));
 
+let regex = rustegex::Engine::new(r"\w+", "vm").unwrap();
+assert!(regex.is_match("foo_bar"));
+assert!(!regex.is_match("-"));
+
 let regex = rustegex::Engine::new("正規表現(太郎|次郎)", "vm").unwrap();
 assert!(regex.is_match("正規表現太郎"));
 assert!(regex.is_match("正規表現次郎"));
@@ -104,6 +129,10 @@ assert!(!regex.is_match("a"));
 let regex = rustegex::Engine::new(r"a\|b\*", "derivative").unwrap();
 assert!(regex.is_match("a|b*"));
 assert!(!regex.is_match("ab"));
+
+let regex = rustegex::Engine::new(r"\s+", "derivative").unwrap();
+assert!(regex.is_match(" \t"));
+assert!(!regex.is_match("a"));
 
 let regex = rustegex::Engine::new("正規表現(太郎|次郎)", "derivative").unwrap();
 assert!(regex.is_match("正規表現太郎"));
@@ -146,6 +175,18 @@ Pattern `ab(cd|)ef|g*|h+`
 Pattern `a+b`, input is 1,000,000 a characters
 
 ![case long](img/case-long.svg)
+
+### case meta
+
+Pattern `a\db|\s\w+|.\d`
+
+![case meta](img/case-meta.svg)
+
+### case meta long
+
+Pattern `\d+`, input is 1,000,000 ASCII digits
+
+![case meta long](img/case-meta-long.svg)
 
 <!-- bench-graphs:end -->
 

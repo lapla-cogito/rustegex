@@ -7,13 +7,14 @@ const ACCEL_MIN_REMAINING: usize = 32;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct Accel {
     loop_byte: Option<u8>,
+    class_loop: Option<(crate::charclass::CharClass, DfaStateID)>,
     needles: [u8; 3],
     needle_len: u8,
 }
 
 impl Accel {
     fn is_enabled(self) -> bool {
-        self.loop_byte.is_some() || self.needle_len > 0
+        self.loop_byte.is_some() || self.class_loop.is_some() || self.needle_len > 0
     }
 
     fn memchr_fwd(&self, haystack: &[u8], at: usize) -> Option<usize> {
@@ -38,6 +39,7 @@ pub struct Dfa {
     state_count: usize,
     ascii_table: Vec<DfaStateID>,
     unicode_table: Vec<foldhash::HashMap<char, DfaStateID>>,
+    unicode_class: Vec<Vec<(crate::charclass::CharClass, DfaStateID)>>,
     accels: Vec<Accel>,
 }
 
@@ -49,6 +51,7 @@ impl Dfa {
             state_count: 0,
             ascii_table: Vec::new(),
             unicode_table: Vec::new(),
+            unicode_class: Vec::new(),
             accels: Vec::new(),
         }
     }
@@ -63,9 +66,17 @@ impl Dfa {
     }
 
     #[cfg(test)]
-    pub fn accel(&self, state: DfaStateID) -> (Option<u8>, u8, [u8; 3]) {
+    pub fn accel(
+        &self,
+        state: DfaStateID,
+    ) -> (Option<u8>, Option<crate::charclass::CharClass>, u8, [u8; 3]) {
         let accel = self.accels[state as usize];
-        (accel.loop_byte, accel.needle_len, accel.needles)
+        (
+            accel.loop_byte,
+            accel.class_loop.map(|(class, _)| class),
+            accel.needle_len,
+            accel.needles,
+        )
     }
 
     #[cfg(test)]
@@ -104,6 +115,8 @@ impl Dfa {
 
         let mut dfa = Dfa::new(start_id, bit_set::BitSet::new());
         let mut raw_transitions: Vec<(DfaStateID, char, DfaStateID)> = Vec::new();
+        let mut raw_class_transitions: Vec<(DfaStateID, crate::charclass::CharClass, DfaStateID)> =
+            Vec::new();
 
         while let Some(current) = queue.pop_front() {
             let current_id = dfa_states[&current];
@@ -117,15 +130,42 @@ impl Dfa {
                 std::collections::BTreeSet<crate::automaton::nfa::NfaStateID>,
             > = foldhash::HashMap::new();
 
+            let mut class_transitions: Vec<(
+                crate::charclass::CharClass,
+                std::collections::BTreeSet<crate::automaton::nfa::NfaStateID>,
+            )> = Vec::new();
+
             for &state in &current {
                 for &(from, label, to) in nfa.transitions() {
-                    if from == state
-                        && let Some(c) = label
-                    {
-                        transitions_map
-                            .entry(c)
-                            .or_default()
-                            .extend(nfa.epsilon_closure([to].iter().cloned().collect()));
+                    if from != state {
+                        continue;
+                    }
+
+                    let closure = nfa.epsilon_closure([to].iter().cloned().collect());
+                    match label {
+                        crate::automaton::label::NfaLabel::Epsilon => {}
+                        crate::automaton::label::NfaLabel::Char(c) => {
+                            transitions_map.entry(c).or_default().extend(closure);
+                        }
+                        crate::automaton::label::NfaLabel::Class(class) => {
+                            for byte in 0u8..128 {
+                                let c = byte as char;
+                                if class.matches(c) {
+                                    transitions_map
+                                        .entry(c)
+                                        .or_default()
+                                        .extend(closure.clone());
+                                }
+                            }
+                            if let Some(entry) = class_transitions
+                                .iter_mut()
+                                .find(|(existing, _)| *existing == class)
+                            {
+                                entry.1.extend(closure);
+                            } else {
+                                class_transitions.push((class, closure));
+                            }
+                        }
                     }
                 }
             }
@@ -144,12 +184,30 @@ impl Dfa {
                 let next_id = dfa_states[&next];
                 raw_transitions.push((current_id, c, next_id));
             }
+
+            for (class, next) in class_transitions {
+                if next.is_empty() {
+                    continue;
+                }
+                if !dfa_states.contains_key(&next) {
+                    let next_id = dfa_states.len() as DfaStateID;
+                    dfa_states.insert(next.clone(), next_id);
+                    queue.push_back(next.clone());
+                }
+                let next_id = dfa_states[&next];
+                raw_class_transitions.push((current_id, class, next_id));
+            }
         }
 
         let state_count = dfa_states.len();
         dfa.state_count = state_count;
         dfa.ascii_table = vec![DEAD; state_count * 128];
         dfa.unicode_table = vec![foldhash::HashMap::new(); state_count];
+        dfa.unicode_class = vec![Vec::new(); state_count];
+
+        for (from, class, to) in raw_class_transitions {
+            dfa.unicode_class[from as usize].push((class, to));
+        }
 
         for (from, c, to) in raw_transitions {
             if c.is_ascii() {
@@ -192,6 +250,8 @@ impl Dfa {
                     state = next;
                 } else if let Some(&next) = unicode[state as usize].get(&c) {
                     state = next;
+                } else if let Some(next) = Self::step_class(state, c, &self.unicode_class) {
+                    state = next;
                 } else {
                     return false;
                 }
@@ -199,6 +259,18 @@ impl Dfa {
         }
 
         self.accepts.contains(state as usize)
+    }
+
+    #[inline]
+    fn step_class(
+        state: DfaStateID,
+        c: char,
+        unicode_class: &[Vec<(crate::charclass::CharClass, DfaStateID)>],
+    ) -> Option<DfaStateID> {
+        unicode_class[state as usize]
+            .iter()
+            .find(|(class, _)| class.matches(c))
+            .map(|&(_, next)| next)
     }
 
     #[inline]
@@ -225,7 +297,20 @@ impl Dfa {
             if remaining >= ACCEL_MIN_REMAINING {
                 let accel = self.accels[state as usize];
                 if accel.is_enabled() {
-                    if let Some(loop_byte) = accel.loop_byte {
+                    if let Some((class, next_state)) = accel.class_loop {
+                        let start = at;
+                        while at < len && class.matches(bytes[at] as char) {
+                            at += 1;
+                        }
+                        if at >= len {
+                            state = next_state;
+                            break;
+                        }
+                        if at > start {
+                            state = next_state;
+                            continue;
+                        }
+                    } else if let Some(loop_byte) = accel.loop_byte {
                         let start = at;
                         while at < len && bytes[at] == loop_byte {
                             at += 1;
@@ -258,6 +343,45 @@ impl Dfa {
     }
 }
 
+fn detect_class_loop(
+    state: usize,
+    table: &[DfaStateID],
+) -> Option<(crate::charclass::CharClass, DfaStateID)> {
+    let base = state * 128;
+    for class in [
+        crate::charclass::CharClass::Digit,
+        crate::charclass::CharClass::Word,
+        crate::charclass::CharClass::Space,
+        crate::charclass::CharClass::Any,
+    ] {
+        let mut target = None;
+        let mut matched = false;
+        for byte in 0u8..128 {
+            if !class.matches(byte as char) {
+                continue;
+            }
+            matched = true;
+            let next = table[base + byte as usize];
+            if next == DEAD {
+                target = None;
+                break;
+            }
+            match target {
+                None => target = Some(next),
+                Some(existing) if existing == next => {}
+                _ => {
+                    target = None;
+                    break;
+                }
+            }
+        }
+        if matched && let Some(next) = target {
+            return Some((class, next));
+        }
+    }
+    None
+}
+
 fn build_accel(state: usize, table: &[DfaStateID]) -> Accel {
     let base = state * 128;
     let self_id = state as DfaStateID;
@@ -280,6 +404,12 @@ fn build_accel(state: usize, table: &[DfaStateID]) -> Accel {
         None
     };
 
+    let class_loop = if loop_byte.is_none() {
+        detect_class_loop(state, table)
+    } else {
+        None
+    };
+
     let mut unique_exits = Vec::new();
     for byte in exit_bytes {
         let next = table[base + byte as usize];
@@ -289,10 +419,15 @@ fn build_accel(state: usize, table: &[DfaStateID]) -> Accel {
     }
 
     if unique_exits.len() > 3 {
-        return Accel::default();
+        return Accel {
+            loop_byte,
+            class_loop,
+            needles: [0; 3],
+            needle_len: 0,
+        };
     }
 
-    if loop_byte.is_none() && unique_exits.is_empty() {
+    if loop_byte.is_none() && class_loop.is_none() && unique_exits.is_empty() {
         return Accel::default();
     }
 
@@ -303,6 +438,7 @@ fn build_accel(state: usize, table: &[DfaStateID]) -> Accel {
 
     Accel {
         loop_byte,
+        class_loop,
         needles,
         needle_len: unique_exits.len() as u8,
     }
@@ -322,6 +458,23 @@ mod tests {
         )
         .unwrap();
         Dfa::from_nfa(&nfa)
+    }
+
+    #[test]
+    fn class_digit_matches() {
+        let dfa = dfa_from_pattern(r"\d");
+        assert!(dfa.is_match("0"));
+        assert!(dfa.is_match("9"));
+        assert!(!dfa.is_match("a"));
+    }
+
+    #[test]
+    fn class_dot_matches() {
+        let dfa = dfa_from_pattern("a.b");
+        assert!(dfa.is_match("a b"));
+        assert!(!dfa.is_match("ab"));
+        assert!(dfa.is_match("axb"));
+        assert!(!dfa.is_match("a\nb"));
     }
 
     #[test]
@@ -400,7 +553,7 @@ mod tests {
         let dfa = dfa_from_pattern("a+b");
         let mut saw_loop = false;
         for state in 0..dfa.state_count {
-            let (loop_byte, needle_len, needles) = dfa.accel(state as DfaStateID);
+            let (loop_byte, _, needle_len, needles) = dfa.accel(state as DfaStateID);
             if loop_byte == Some(b'a') {
                 saw_loop = true;
                 assert_eq!(needle_len, 1);
@@ -414,11 +567,28 @@ mod tests {
     }
 
     #[test]
+    fn accel_digit_plus() {
+        let dfa = dfa_from_pattern(r"\d+");
+        let mut saw_digit_loop = false;
+        for state in 0..dfa.state_count {
+            let (_, class_loop, _, _) = dfa.accel(state as DfaStateID);
+            if class_loop == Some(crate::charclass::CharClass::Digit) {
+                saw_digit_loop = true;
+            }
+        }
+        assert!(saw_digit_loop);
+        assert!(dfa.is_match("0123456789"));
+        assert!(!dfa.is_match("012a456"));
+        let input = "0123456789".repeat(10_000);
+        assert!(dfa.is_match(&input));
+    }
+
+    #[test]
     fn accel_star_b() {
         let dfa = dfa_from_pattern("b*");
         let mut saw_loop = false;
         for state in 0..dfa.state_count {
-            let (loop_byte, needle_len, _) = dfa.accel(state as DfaStateID);
+            let (loop_byte, _, needle_len, _) = dfa.accel(state as DfaStateID);
             if loop_byte == Some(b'b') && needle_len == 0 {
                 saw_loop = true;
             }
