@@ -12,6 +12,9 @@ A hobby regular expression engine in Rust.
         - Processes all active NFA states simultaneously per input character
     - Derivative-based engine
         - Matches by repeatedly computing Brzozowski's derivative of the pattern
+- Matching:
+    - `is_match`: the entire input must match
+    - `is_partial_match`: any substring may match
 - Supported syntax:
     - Quantifiers: `*`, `+`, `?`
     - Alternation and grouping: `|`, `()`
@@ -138,6 +141,16 @@ let regex = rustegex::Engine::new("正規表現(太郎|次郎)", "derivative").u
 assert!(regex.is_match("正規表現太郎"));
 assert!(regex.is_match("正規表現次郎"));
 assert!(!regex.is_match("正規表現三郎"));
+```
+
+Partial search (any engine):
+
+```rust
+let regex = rustegex::Engine::new("(p(erl|ython|hp)|ruby)", "dfa").unwrap();
+assert!(regex.is_match("python"));
+assert!(!regex.is_match("I write python"));
+assert!(regex.is_partial_match("I write python"));
+assert!(!regex.is_partial_match("I write rust"));
 ```
 
 ## Test
