@@ -169,7 +169,7 @@ $ cargo bench --bench benchmark
 
 ## Benchmarks
 
-Comparison against the [`regex`](https://crates.io/crates/regex) crate.
+Comparison against the [`regex`](https://crates.io/crates/regex) crate. All benchmarks were conducted on Ubuntu 26.04 running an Intel Core Ultra 5 325. For the Derivative engine results, which were primarily collected for experimental purposes, please view them as reference values.
 
 ### Full-string `is_match`
 
