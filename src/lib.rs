@@ -103,15 +103,71 @@ impl Engine {
             };
         }
 
-        let input = if let Some(prefilter) = &self.prefilter {
-            let Some(at) = prefilter.find_first(input.as_bytes()) else {
-                return false;
-            };
-            &input[at..]
-        } else {
-            input
-        };
+        if let Some(prefilter) = &self.prefilter {
+            let bytes = input.as_bytes();
+            match prefilter.role() {
+                literals::PrefilterRole::Prefix => {
+                    return self.partial_from_prefix_hits(prefilter, input, bytes);
+                }
+                literals::PrefilterRole::Required => {
+                    if prefilter.required_anchor_at_hit() {
+                        return self.partial_from_prefix_hits(prefilter, input, bytes);
+                    }
+                    // Required substring must appear; match may start earlier.
+                    if prefilter.find_first(bytes).is_none() {
+                        return false;
+                    }
+                    return self.is_partial_match_unfiltered(input);
+                }
+                literals::PrefilterRole::StartByte => {
+                    // Skip leading impossible bytes, then one unanchored scan.
+                    let Some(at) = prefilter.find_first(bytes) else {
+                        return false;
+                    };
+                    if !input.is_char_boundary(at) {
+                        return self.is_partial_match_unfiltered(input);
+                    }
+                    return self.is_partial_match_unfiltered(&input[at..]);
+                }
+            }
+        }
 
+        self.is_partial_match_unfiltered(input)
+    }
+
+    fn partial_from_prefix_hits(
+        &self,
+        prefilter: &literals::Prefilter,
+        input: &str,
+        bytes: &[u8],
+    ) -> bool {
+        match &self.regex {
+            Regex::Dfa { dfa, unanchored } => {
+                let Some(first) = prefilter.find_first(bytes) else {
+                    return false;
+                };
+                if !input.is_char_boundary(first) {
+                    return unanchored.find_accept(input);
+                }
+                let rest = &input[first..];
+                dfa.find_accept(rest) || unanchored.find_accept(rest)
+            }
+            Regex::Vm { vm } => {
+                let Some(at) = prefilter.find_first(bytes) else {
+                    return false;
+                };
+                input.is_char_boundary(at) && vm.is_partial_match(&input[at..])
+            }
+            Regex::Derivative { derivative } => {
+                let Some(at) = prefilter.find_first(bytes) else {
+                    return false;
+                };
+                input.is_char_boundary(at) && derivative.is_partial_match(&input[at..])
+            }
+        }
+    }
+
+    fn is_partial_match_unfiltered(&self, input: &str) -> bool {
         match &self.regex {
             Regex::Dfa { unanchored, .. } => unanchored.find_accept(input),
             Regex::Vm { vm } => vm.is_partial_match(input),
@@ -827,6 +883,87 @@ mod tests {
             assert!(engine.is_partial_match("abcd"), "method={method}");
             assert!(!engine.is_partial_match("abcabc"), "method={method}");
             assert!(!engine.is_partial_match("abxd"), "method={method}");
+        }
+    }
+
+    #[test]
+    fn partial_prefilter_false_positive_then_real() {
+        for method in ["dfa", "vm", "derivative"] {
+            let engine = Engine::new("abc+d", method).unwrap();
+            assert!(engine.is_partial_match("abcXabcd"), "method={method}");
+            assert!(!engine.is_partial_match("abcXabc"), "method={method}");
+        }
+    }
+
+    #[test]
+    fn partial_required_literal_after_repeat() {
+        for method in ["dfa", "vm", "derivative"] {
+            let engine = Engine::new("a*bcd", method).unwrap();
+            assert!(engine.prefilter.is_some(), "method={method}");
+            assert!(engine.is_partial_match("xxxbcd"), "method={method}");
+            assert!(engine.is_partial_match("aaabcd"), "method={method}");
+            assert!(!engine.is_partial_match("aaabc"), "method={method}");
+            assert!(
+                !engine.is_partial_match(&"x".repeat(1000)),
+                "method={method}"
+            );
+        }
+    }
+
+    #[test]
+    fn partial_required_with_plus_prefix() {
+        // Match starts before the required "bcd" hit.
+        for method in ["dfa", "vm", "derivative"] {
+            let engine = Engine::new("a+bcd", method).unwrap();
+            assert!(engine.is_partial_match("xxaaabcdyy"), "method={method}");
+            assert!(!engine.is_partial_match("xxbcdyy"), "method={method}");
+            assert!(!engine.is_partial_match("xxaaabc"), "method={method}");
+        }
+    }
+
+    #[test]
+    fn partial_short_prefix_alt() {
+        for method in ["dfa", "vm", "derivative"] {
+            let engine = Engine::new("ab|cd", method).unwrap();
+            assert!(engine.prefilter.is_some(), "method={method}");
+            assert!(engine.is_partial_match("xxabxx"), "method={method}");
+            assert!(engine.is_partial_match("xxcdxx"), "method={method}");
+            assert!(!engine.is_partial_match("xxacxx"), "method={method}");
+        }
+    }
+
+    #[test]
+    fn partial_start_byte_skip() {
+        for method in ["dfa", "vm", "derivative"] {
+            let engine = Engine::new("a+b", method).unwrap();
+            assert!(engine.prefilter.is_some(), "method={method}");
+            let hay_no = "x".repeat(10_000);
+            assert!(!engine.is_partial_match(&hay_no), "method={method}");
+            let hay_yes = format!("{}ab", "x".repeat(10_000));
+            assert!(engine.is_partial_match(&hay_yes), "method={method}");
+        }
+    }
+
+    #[test]
+    fn partial_required_non_anchor_prefix() {
+        // Required "bcd" but match must start at 'x', not at the hit.
+        for method in ["dfa", "vm", "derivative"] {
+            let engine = Engine::new("xa*bcd", method).unwrap();
+            assert!(
+                engine
+                    .prefilter
+                    .as_ref()
+                    .is_some_and(|p| p.role() == literals::PrefilterRole::Required
+                        && !p.required_anchor_at_hit()),
+                "method={method}"
+            );
+            assert!(engine.is_partial_match("xxaabcdyy"), "method={method}");
+            assert!(engine.is_partial_match("xbcd"), "method={method}");
+            assert!(!engine.is_partial_match("aaabcd"), "method={method}");
+            assert!(
+                !engine.is_partial_match(&"z".repeat(1000)),
+                "method={method}"
+            );
         }
     }
 }

@@ -177,6 +177,71 @@ fn case_partial_long(c: &mut criterion::Criterion) {
     group.finish();
 }
 
+fn case_partial_required_miss(c: &mut criterion::Criterion) {
+    let pattern = "a*bcd";
+    let input = "xyz ".repeat(50_000);
+
+    let mut group = c.benchmark_group("partial required miss");
+    bench_partial(&mut group, pattern, &input);
+    group.finish();
+}
+
+fn case_partial_required_hit(c: &mut criterion::Criterion) {
+    let pattern = "a*bcd";
+    let input = format!("{}aaabcd", "xyz ".repeat(50_000));
+
+    let mut group = c.benchmark_group("partial required hit");
+    bench_partial(&mut group, pattern, &input);
+    group.finish();
+}
+
+fn case_partial_start_byte_miss(c: &mut criterion::Criterion) {
+    let pattern = "a+b";
+    let input = "x".repeat(500_000);
+
+    let mut group = c.benchmark_group("partial start-byte miss");
+    bench_partial(&mut group, pattern, &input);
+    group.finish();
+}
+
+fn case_partial_start_byte_hit(c: &mut criterion::Criterion) {
+    let pattern = "a+b";
+    let input = format!("{}aaab", "x".repeat(500_000));
+
+    let mut group = c.benchmark_group("partial start-byte hit");
+    bench_partial(&mut group, pattern, &input);
+    group.finish();
+}
+
+fn case_partial_short_alt(c: &mut criterion::Criterion) {
+    let pattern = "ab|cd";
+    let input = format!("{}cd", "lorem ipsum ".repeat(20_000));
+
+    let mut group = c.benchmark_group("partial short alt");
+    bench_partial(&mut group, pattern, &input);
+    group.finish();
+}
+
+fn case_partial_digit(c: &mut criterion::Criterion) {
+    let pattern = r"\d+";
+    let input = format!("{}42", "word ".repeat(40_000));
+
+    let mut group = c.benchmark_group("partial digit");
+    bench_partial(&mut group, pattern, &input);
+    group.finish();
+}
+
+fn case_partial_prefix_fp(c: &mut criterion::Criterion) {
+    let pattern = "abc+d";
+    // Many "abc" runs that are not followed by more c's and d, then a real match.
+    let mut input = "abcX".repeat(5_000);
+    input.push_str("abcd");
+
+    let mut group = c.benchmark_group("partial prefix fp");
+    bench_partial(&mut group, pattern, &input);
+    group.finish();
+}
+
 criterion::criterion_group!(
     benches,
     case_1,
@@ -187,5 +252,12 @@ criterion::criterion_group!(
     case_partial_literal,
     case_partial_alt,
     case_partial_long,
+    case_partial_required_miss,
+    case_partial_required_hit,
+    case_partial_start_byte_miss,
+    case_partial_start_byte_hit,
+    case_partial_short_alt,
+    case_partial_digit,
+    case_partial_prefix_fp,
 );
 criterion::criterion_main!(benches);

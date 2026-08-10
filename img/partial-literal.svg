@@ -3,29 +3,27 @@
 <rect width="100%" height="100%" fill="#ffffff"/>
 <style>text { font-family: ui-sans-serif, system-ui, sans-serif; fill: #1f2937; }.title { font-size: 18px; font-weight: 700; }.subtitle { font-size: 12px; fill: #4b5563; }.label { font-size: 13px; }.value { font-size: 12px; fill: #374151; }.axis { stroke: #9ca3af; stroke-width: 1; }.tick { stroke: #d1d5db; stroke-width: 1; }.tick-label { font-size: 11px; fill: #6b7280; }</style>
 <text class="title" x="170" y="28">partial literal: Pattern `Sherlock` in a ~600 KB haystack</text>
-<text class="subtitle" x="170" y="46">Lower is better (log scale)</text>
+<text class="subtitle" x="170" y="46">Lower is better (linear scale)</text>
 <line class="axis" x1="170" y1="316" x2="653" y2="316"/>
 <line class="axis" x1="170" y1="56" x2="170" y2="316"/>
 <line class="tick" x1="170.0" y1="56" x2="170.0" y2="316"/>
-<text class="tick-label" x="170.0" y="334" text-anchor="middle">5.43 µs</text>
-<line class="tick" x1="290.7" y1="56" x2="290.7" y2="316"/>
-<text class="tick-label" x="290.7" y="334" text-anchor="middle">5.51 µs</text>
-<line class="tick" x1="411.5" y1="56" x2="411.5" y2="316"/>
-<text class="tick-label" x="411.5" y="334" text-anchor="middle">5.59 µs</text>
-<line class="tick" x1="532.3" y1="56" x2="532.3" y2="316"/>
-<text class="tick-label" x="532.3" y="334" text-anchor="middle">5.67 µs</text>
+<text class="tick-label" x="170.0" y="334" text-anchor="middle">0.0 ns</text>
+<line class="tick" x1="331.0" y1="56" x2="331.0" y2="316"/>
+<text class="tick-label" x="331.0" y="334" text-anchor="middle">2.00 µs</text>
+<line class="tick" x1="492.0" y1="56" x2="492.0" y2="316"/>
+<text class="tick-label" x="492.0" y="334" text-anchor="middle">4.00 µs</text>
 <line class="tick" x1="653.0" y1="56" x2="653.0" y2="316"/>
-<text class="tick-label" x="653.0" y="334" text-anchor="middle">5.75 µs</text>
-<rect x="170.0" y="56.0" width="80.4" height="51.5" fill="#4c78a8" rx="4"/>
+<text class="tick-label" x="653.0" y="334" text-anchor="middle">6.00 µs</text>
+<rect x="170.0" y="56.0" width="464.9" height="51.5" fill="#4c78a8" rx="4"/>
 <text class="label" x="160" y="85.75" text-anchor="end">rustegex DFA</text>
-<text class="value" x="258.4" y="85.75">5.48 µs</text>
-<rect x="170.0" y="125.5" width="483.0" height="51.5" fill="#59a14f" rx="4"/>
+<text class="value" x="642.9" y="85.75">5.78 µs</text>
+<rect x="170.0" y="125.5" width="462.9" height="51.5" fill="#59a14f" rx="4"/>
 <text class="label" x="160" y="155.25" text-anchor="end">rustegex VM</text>
-<text class="value" x="661.0" y="155.25">5.75 µs</text>
-<rect x="170.0" y="195.0" width="2.0" height="51.5" fill="#f28e2b" rx="4"/>
+<text class="value" x="640.9" y="155.25">5.75 µs</text>
+<rect x="170.0" y="195.0" width="437.0" height="51.5" fill="#f28e2b" rx="4"/>
 <text class="label" x="160" y="224.75" text-anchor="end">(rustegex Derivative)</text>
-<text class="value" x="180.0" y="224.75">5.43 µs</text>
-<rect x="170.0" y="264.5" width="168.6" height="51.5" fill="#b279a2" rx="4"/>
+<text class="value" x="615.0" y="224.75">5.43 µs</text>
+<rect x="170.0" y="264.5" width="442.7" height="51.5" fill="#b279a2" rx="4"/>
 <text class="label" x="160" y="294.25" text-anchor="end">regex crate</text>
-<text class="value" x="346.6" y="294.25">5.54 µs</text>
+<text class="value" x="620.7" y="294.25">5.50 µs</text>
 </svg>

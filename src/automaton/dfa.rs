@@ -11,6 +11,8 @@ struct Accel {
     class_find: Option<crate::charclass::CharClass>,
     needles: [u8; 3],
     needle_len: u8,
+    // Bitmask of ASCII exit bytes when there are more than 3 distinct exits.
+    exit_mask: u128,
 }
 
 impl Accel {
@@ -19,20 +21,24 @@ impl Accel {
             || self.class_loop.is_some()
             || self.class_find.is_some()
             || self.needle_len > 0
+            || self.exit_mask != 0
     }
 
     fn memchr_fwd(&self, haystack: &[u8], at: usize) -> Option<usize> {
-        if self.needle_len == 0 {
-            return None;
+        if self.needle_len > 0 {
+            let slice = &haystack[at..];
+            let offset = match self.needle_len {
+                1 => memchr::memchr(self.needles[0], slice)?,
+                2 => memchr::memchr2(self.needles[0], self.needles[1], slice)?,
+                3 => memchr::memchr3(self.needles[0], self.needles[1], self.needles[2], slice)?,
+                _ => return None,
+            };
+            return Some(at + offset);
         }
-        let slice = &haystack[at..];
-        let offset = match self.needle_len {
-            1 => memchr::memchr(self.needles[0], slice)?,
-            2 => memchr::memchr2(self.needles[0], self.needles[1], slice)?,
-            3 => memchr::memchr3(self.needles[0], self.needles[1], self.needles[2], slice)?,
-            _ => return None,
-        };
-        Some(at + offset)
+        if self.exit_mask != 0 {
+            return crate::charclass::find_exit_mask(haystack, at, self.exit_mask);
+        }
+        None
     }
 }
 
@@ -40,6 +46,8 @@ impl Accel {
 pub struct Dfa {
     start: DfaStateID,
     accepts: bit_set::BitSet,
+    // Flat accept flags for the match hot path (indexed by state id).
+    accept_flags: Vec<bool>,
     state_count: usize,
     ascii_table: Vec<DfaStateID>,
     unicode_table: Vec<foldhash::HashMap<char, DfaStateID>>,
@@ -52,6 +60,7 @@ impl Dfa {
         Dfa {
             start,
             accepts,
+            accept_flags: Vec::new(),
             state_count: 0,
             ascii_table: Vec::new(),
             unicode_table: Vec::new(),
@@ -62,6 +71,11 @@ impl Dfa {
 
     pub fn start(&self) -> DfaStateID {
         self.start
+    }
+
+    #[inline(always)]
+    fn is_accept(&self, state: DfaStateID) -> bool {
+        *unsafe { self.accept_flags.get_unchecked(state as usize) }
     }
 
     #[cfg(test)]
@@ -208,6 +222,7 @@ impl Dfa {
         dfa.ascii_table = vec![DEAD; state_count * 128];
         dfa.unicode_table = vec![foldhash::HashMap::new(); state_count];
         dfa.unicode_class = vec![Vec::new(); state_count];
+        dfa.accept_flags = (0..state_count).map(|s| dfa.accepts.contains(s)).collect();
 
         for (from, class, to) in raw_class_transitions {
             dfa.unicode_class[from as usize].push((class, to));
@@ -262,12 +277,12 @@ impl Dfa {
             }
         }
 
-        self.accepts.contains(state as usize)
+        self.is_accept(state)
     }
 
     pub fn find_accept(&self, input: &str) -> bool {
         let mut state = self.start();
-        if self.accepts.contains(state as usize) {
+        if self.is_accept(state) {
             return true;
         }
 
@@ -290,7 +305,7 @@ impl Dfa {
                 } else {
                     return false;
                 }
-                if self.accepts.contains(state as usize) {
+                if self.is_accept(state) {
                     return true;
                 }
             }
@@ -309,20 +324,16 @@ impl Dfa {
                 let accel = self.accels[state as usize];
                 if accel.is_enabled() {
                     if let Some(class) = accel.class_find {
-                        while at < len && !class.matches(bytes[at] as char) {
-                            at += 1;
-                        }
-                        if at >= len {
-                            return false;
+                        match class.find_byte(bytes, at) {
+                            Some(hit) => at = hit,
+                            None => return false,
                         }
                     } else if let Some((class, next_state)) = accel.class_loop {
                         let start = at;
-                        while at < len && class.matches(bytes[at] as char) {
-                            at += 1;
-                        }
+                        at = class.skip_bytes(bytes, at);
                         if at > start {
                             state = next_state;
-                            if self.accepts.contains(state as usize) {
+                            if self.is_accept(state) {
                                 return true;
                             }
                             if at >= len {
@@ -331,11 +342,9 @@ impl Dfa {
                             continue;
                         }
                     } else if let Some(loop_byte) = accel.loop_byte {
-                        while at < len && bytes[at] == loop_byte {
-                            at += 1;
-                        }
+                        at = crate::charclass::skip_equal_bytes(bytes, at, loop_byte);
                         if at >= len {
-                            return self.accepts.contains(state as usize);
+                            return self.is_accept(state);
                         }
                     } else if let Some(hit) = accel.memchr_fwd(bytes, at) {
                         at = hit;
@@ -349,7 +358,7 @@ impl Dfa {
                 return false;
             }
             state = next;
-            if self.accepts.contains(state as usize) {
+            if self.is_accept(state) {
                 return true;
             }
             at += 1;
@@ -396,9 +405,7 @@ impl Dfa {
                 if accel.is_enabled() {
                     if let Some((class, next_state)) = accel.class_loop {
                         let start = at;
-                        while at < len && class.matches(bytes[at] as char) {
-                            at += 1;
-                        }
+                        at = class.skip_bytes(bytes, at);
                         if at >= len {
                             state = next_state;
                             break;
@@ -409,9 +416,7 @@ impl Dfa {
                         }
                     } else if let Some(loop_byte) = accel.loop_byte {
                         let start = at;
-                        while at < len && bytes[at] == loop_byte {
-                            at += 1;
-                        }
+                        at = crate::charclass::skip_equal_bytes(bytes, at, loop_byte);
                         if at >= len {
                             break;
                         }
@@ -557,11 +562,18 @@ fn build_accel(state: usize, table: &[DfaStateID]) -> Accel {
 
     let mut needles = [0u8; 3];
     let mut needle_len = 0u8;
-    if class_loop.is_none() && class_find.is_none() && exit_bytes.len() <= 3 {
-        for (i, &byte) in exit_bytes.iter().enumerate() {
-            needles[i] = byte;
+    let mut exit_mask = 0u128;
+    if class_loop.is_none() && class_find.is_none() {
+        if exit_bytes.len() <= 3 {
+            for (i, &byte) in exit_bytes.iter().enumerate() {
+                needles[i] = byte;
+            }
+            needle_len = exit_bytes.len() as u8;
+        } else {
+            for &byte in &exit_bytes {
+                exit_mask |= 1u128 << byte;
+            }
         }
-        needle_len = exit_bytes.len() as u8;
     }
 
     Accel {
@@ -570,6 +582,7 @@ fn build_accel(state: usize, table: &[DfaStateID]) -> Accel {
         class_find,
         needles,
         needle_len,
+        exit_mask,
     }
 }
 

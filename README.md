@@ -169,9 +169,7 @@ $ cargo bench --bench benchmark
 
 ## Benchmarks
 
-Comparison against the [`regex`](https://crates.io/crates/regex) crate. All benchmarks were conducted on Ubuntu 26.04 running an Intel Core Ultra 5 325 with . For more detailed benchmark results, refer to `benches/benchmark.rs`.
-
-For all benchmarks, please treat the derivative engine as a reference value. This is because this engine is specifically designed for experimentation rather than serious performance optimization.
+Comparison against the [`regex`](https://crates.io/crates/regex) crate.
 
 ### Full-string `is_match`
 
@@ -222,6 +220,54 @@ Pattern `Sherlock` in a ~600 KB haystack
 Pattern `(p(erl|ython|hp)|ruby)` in a 240 KB haystack
 
 ![partial alt](img/partial-alt.svg)
+
+#### partial long
+
+Pattern `a+b`, input is 1,000,000 `a` characters (no match)
+
+![partial long](img/partial-long.svg)
+
+#### partial required miss
+
+Pattern `a*bcd` in a ~200 KB haystack with no `bcd` (required-literal reject)
+
+![partial required miss](img/partial-required-miss.svg)
+
+#### partial required hit
+
+Pattern `a*bcd` with match near end of a ~200 KB haystack
+
+![partial required hit](img/partial-required-hit.svg)
+
+#### partial start-byte miss
+
+Pattern `a+b` in 500 KB of `x` (first-byte prefilter miss)
+
+![partial start-byte miss](img/partial-start-byte-miss.svg)
+
+#### partial start-byte hit
+
+Pattern `a+b` after 500 KB of `x`, match at end
+
+![partial start-byte hit](img/partial-start-byte-hit.svg)
+
+#### partial short alt
+
+Pattern `ab|cd` in a 240 KB haystack (2-byte prefix prefilter)
+
+![partial short alt](img/partial-short-alt.svg)
+
+#### partial digit
+
+Pattern `\d+` with digits near end of a large non-digit haystack
+
+![partial digit](img/partial-digit.svg)
+
+#### partial prefix fp
+
+Pattern `abc+d` with many false `abc` prefixes before a real match
+
+![partial prefix fp](img/partial-prefix-fp.svg)
 
 <!-- bench-graphs:end -->
 
