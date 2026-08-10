@@ -44,7 +44,8 @@ impl Program {
             0 => crate::charclass::CharClass::Any,
             1 => crate::charclass::CharClass::Digit,
             2 => crate::charclass::CharClass::Word,
-            _ => crate::charclass::CharClass::Space,
+            3 => crate::charclass::CharClass::Space,
+            _ => crate::charclass::CharClass::DotAll,
         }
     }
 
@@ -122,6 +123,7 @@ impl ProgramBuilder {
             crate::charclass::CharClass::Digit => 1,
             crate::charclass::CharClass::Word => 2,
             crate::charclass::CharClass::Space => 3,
+            crate::charclass::CharClass::DotAll => 4,
         };
         self.emit(OP_CLASS, id, 0);
     }

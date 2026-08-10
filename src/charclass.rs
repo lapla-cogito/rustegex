@@ -4,6 +4,7 @@ pub enum CharClass {
     Digit,
     Word,
     Space,
+    DotAll,
 }
 
 impl CharClass {
@@ -14,6 +15,7 @@ impl CharClass {
             CharClass::Digit => c.is_ascii_digit(),
             CharClass::Word => c == '_' || c.is_ascii_alphanumeric(),
             CharClass::Space => matches!(c, ' ' | '\t' | '\n' | '\r' | '\x0c' | '\x0b'),
+            CharClass::DotAll => true,
         }
     }
 
@@ -49,5 +51,7 @@ mod tests {
         assert!(CharClass::Space.matches(' '));
         assert!(CharClass::Any.matches('x'));
         assert!(!CharClass::Any.matches('\n'));
+        assert!(CharClass::DotAll.matches('x'));
+        assert!(CharClass::DotAll.matches('\n'));
     }
 }

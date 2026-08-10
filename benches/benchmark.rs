@@ -119,6 +119,71 @@ fn case_meta_long(c: &mut criterion::Criterion) {
     group.finish();
 }
 
+fn bench_partial(
+    group: &mut criterion::BenchmarkGroup<criterion::measurement::WallTime>,
+    pattern: &str,
+    input: &str,
+) {
+    let dfa = rustegex::Engine::new(pattern, "dfa").unwrap();
+    group.bench_function("rustegex/dfa", |b| {
+        b.iter(|| {
+            dfa.is_partial_match(input);
+        });
+    });
+
+    let vm = rustegex::Engine::new(pattern, "vm").unwrap();
+    group.bench_function("rustegex/vm", |b| {
+        b.iter(|| {
+            vm.is_partial_match(input);
+        });
+    });
+
+    let derivative = rustegex::Engine::new(pattern, "derivative").unwrap();
+    group.bench_function("rustegex/derivative", |b| {
+        b.iter(|| {
+            derivative.is_partial_match(input);
+        });
+    });
+
+    let re = regex::Regex::new(pattern).unwrap();
+    group.bench_function("regex", |b| {
+        b.iter(|| {
+            re.is_match(input);
+        });
+    });
+}
+
+fn case_partial_literal(c: &mut criterion::Criterion) {
+    let pattern = "Sherlock";
+    let input = format!(
+        "{}Sherlock{}",
+        "abcde ".repeat(50_000),
+        "xyzzy ".repeat(50_000)
+    );
+
+    let mut group = c.benchmark_group("partial literal");
+    bench_partial(&mut group, pattern, &input);
+    group.finish();
+}
+
+fn case_partial_alt(c: &mut criterion::Criterion) {
+    let pattern = "(p(erl|ython|hp)|ruby)";
+    let input = format!("{}python", "lorem ipsum ".repeat(20_000));
+
+    let mut group = c.benchmark_group("partial alt");
+    bench_partial(&mut group, pattern, &input);
+    group.finish();
+}
+
+fn case_partial_long(c: &mut criterion::Criterion) {
+    let pattern = "a+b";
+    let input = "a".repeat(1_000_000);
+
+    let mut group = c.benchmark_group("partial long");
+    bench_partial(&mut group, pattern, &input);
+    group.finish();
+}
+
 criterion::criterion_group!(
     benches,
     case_1,
@@ -126,5 +191,8 @@ criterion::criterion_group!(
     case_long,
     case_meta,
     case_meta_long,
+    case_partial_literal,
+    case_partial_alt,
+    case_partial_long,
 );
 criterion::criterion_main!(benches);

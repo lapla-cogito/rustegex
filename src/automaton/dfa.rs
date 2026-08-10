@@ -8,13 +8,17 @@ const ACCEL_MIN_REMAINING: usize = 32;
 struct Accel {
     loop_byte: Option<u8>,
     class_loop: Option<(crate::charclass::CharClass, DfaStateID)>,
+    class_find: Option<crate::charclass::CharClass>,
     needles: [u8; 3],
     needle_len: u8,
 }
 
 impl Accel {
     fn is_enabled(self) -> bool {
-        self.loop_byte.is_some() || self.class_loop.is_some() || self.needle_len > 0
+        self.loop_byte.is_some()
+            || self.class_loop.is_some()
+            || self.class_find.is_some()
+            || self.needle_len > 0
     }
 
     fn memchr_fwd(&self, haystack: &[u8], at: usize) -> Option<usize> {
@@ -261,6 +265,99 @@ impl Dfa {
         self.accepts.contains(state as usize)
     }
 
+    pub fn find_accept(&self, input: &str) -> bool {
+        let mut state = self.start();
+        if self.accepts.contains(state as usize) {
+            return true;
+        }
+
+        if input.is_ascii() {
+            self.search_ascii(input.as_bytes(), state)
+        } else {
+            let table = &self.ascii_table;
+            let unicode = &self.unicode_table;
+            for c in input.chars() {
+                if c.is_ascii() {
+                    let next = *unsafe { table.get_unchecked(state as usize * 128 + c as usize) };
+                    if next == DEAD {
+                        return false;
+                    }
+                    state = next;
+                } else if let Some(&next) = unicode[state as usize].get(&c) {
+                    state = next;
+                } else if let Some(next) = Self::step_class(state, c, &self.unicode_class) {
+                    state = next;
+                } else {
+                    return false;
+                }
+                if self.accepts.contains(state as usize) {
+                    return true;
+                }
+            }
+            false
+        }
+    }
+
+    fn search_ascii(&self, bytes: &[u8], mut state: DfaStateID) -> bool {
+        let table = &self.ascii_table;
+        let mut at = 0usize;
+        let len = bytes.len();
+
+        while at < len {
+            let remaining = len - at;
+            if remaining >= ACCEL_MIN_REMAINING {
+                let accel = self.accels[state as usize];
+                if accel.is_enabled() {
+                    if let Some(class) = accel.class_find {
+                        while at < len && !class.matches(bytes[at] as char) {
+                            at += 1;
+                        }
+                        if at >= len {
+                            return false;
+                        }
+                    } else if let Some((class, next_state)) = accel.class_loop {
+                        let start = at;
+                        while at < len && class.matches(bytes[at] as char) {
+                            at += 1;
+                        }
+                        if at > start {
+                            state = next_state;
+                            if self.accepts.contains(state as usize) {
+                                return true;
+                            }
+                            if at >= len {
+                                return false;
+                            }
+                            continue;
+                        }
+                    } else if let Some(loop_byte) = accel.loop_byte {
+                        while at < len && bytes[at] == loop_byte {
+                            at += 1;
+                        }
+                        if at >= len {
+                            return self.accepts.contains(state as usize);
+                        }
+                    } else if let Some(hit) = accel.memchr_fwd(bytes, at) {
+                        at = hit;
+                    }
+                }
+            }
+
+            let byte = bytes[at];
+            let next = *unsafe { table.get_unchecked(state as usize * 128 + byte as usize) };
+            if next == DEAD {
+                return false;
+            }
+            state = next;
+            if self.accepts.contains(state as usize) {
+                return true;
+            }
+            at += 1;
+        }
+
+        false
+    }
+
     #[inline]
     fn step_class(
         state: DfaStateID,
@@ -356,27 +453,64 @@ fn detect_class_loop(
     ] {
         let mut target = None;
         let mut matched = false;
+        let mut ok = true;
         for byte in 0u8..128 {
-            if !class.matches(byte as char) {
-                continue;
-            }
-            matched = true;
             let next = table[base + byte as usize];
-            if next == DEAD {
-                target = None;
-                break;
-            }
-            match target {
-                None => target = Some(next),
-                Some(existing) if existing == next => {}
-                _ => {
-                    target = None;
+            if class.matches(byte as char) {
+                matched = true;
+                if next == DEAD {
+                    ok = false;
                     break;
                 }
+                match target {
+                    None => target = Some(next),
+                    Some(existing) if existing == next => {}
+                    _ => {
+                        ok = false;
+                        break;
+                    }
+                }
+            } else if next != DEAD {
+                ok = false;
+                break;
             }
         }
-        if matched && let Some(next) = target {
+        if ok
+            && matched
+            && let Some(next) = target
+        {
             return Some((class, next));
+        }
+    }
+    None
+}
+
+fn detect_class_find(state: usize, table: &[DfaStateID]) -> Option<crate::charclass::CharClass> {
+    let base = state * 128;
+    let self_id = state as DfaStateID;
+    for class in [
+        crate::charclass::CharClass::Digit,
+        crate::charclass::CharClass::Word,
+        crate::charclass::CharClass::Space,
+        crate::charclass::CharClass::Any,
+    ] {
+        let mut any_exit = false;
+        let mut ok = true;
+        for byte in 0u8..128 {
+            let next = table[base + byte as usize];
+            if class.matches(byte as char) {
+                if next == DEAD || next == self_id {
+                    ok = false;
+                    break;
+                }
+                any_exit = true;
+            } else if next != self_id && next != DEAD {
+                ok = false;
+                break;
+            }
+        }
+        if ok && any_exit {
+            return Some(class);
         }
     }
     None
@@ -410,37 +544,32 @@ fn build_accel(state: usize, table: &[DfaStateID]) -> Accel {
         None
     };
 
-    let mut unique_exits = Vec::new();
-    for byte in exit_bytes {
-        let next = table[base + byte as usize];
-        if !unique_exits.iter().any(|&(_, id)| id == next) {
-            unique_exits.push((byte, next));
-        }
-    }
+    let class_find = if loop_byte.is_none() && class_loop.is_none() {
+        detect_class_find(state, table)
+    } else {
+        None
+    };
 
-    if unique_exits.len() > 3 {
-        return Accel {
-            loop_byte,
-            class_loop,
-            needles: [0; 3],
-            needle_len: 0,
-        };
-    }
-
-    if loop_byte.is_none() && class_loop.is_none() && unique_exits.is_empty() {
+    if loop_byte.is_none() && class_loop.is_none() && class_find.is_none() && exit_bytes.is_empty()
+    {
         return Accel::default();
     }
 
     let mut needles = [0u8; 3];
-    for (i, &(byte, _)) in unique_exits.iter().enumerate() {
-        needles[i] = byte;
+    let mut needle_len = 0u8;
+    if class_loop.is_none() && class_find.is_none() && exit_bytes.len() <= 3 {
+        for (i, &byte) in exit_bytes.iter().enumerate() {
+            needles[i] = byte;
+        }
+        needle_len = exit_bytes.len() as u8;
     }
 
     Accel {
         loop_byte,
         class_loop,
+        class_find,
         needles,
-        needle_len: unique_exits.len() as u8,
+        needle_len,
     }
 }
 
@@ -596,5 +725,75 @@ mod tests {
         assert!(saw_loop);
         assert!(dfa.is_match(""));
         assert!(dfa.is_match(&"b".repeat(1000)));
+    }
+
+    fn unanchored_dfa_from_pattern(pattern: &str) -> Dfa {
+        let mut lexer = crate::lexer::Lexer::new(pattern);
+        let mut parser = crate::parser::Parser::new(&mut lexer);
+        let ast = parser.parse().unwrap();
+        let mut state = crate::automaton::nfa::NfaState::new();
+        let nfa = crate::automaton::nfa::Nfa::new_from_node(ast, &mut state).unwrap();
+        Dfa::from_nfa(&nfa.with_unanchored_start(&mut state))
+    }
+
+    #[test]
+    fn partial_literal_in_haystack() {
+        let dfa = unanchored_dfa_from_pattern("abc");
+        assert!(dfa.find_accept("xyzabcdef"));
+        assert!(dfa.find_accept("abc"));
+        assert!(dfa.find_accept("ababc"));
+        assert!(!dfa.find_accept("ab"));
+        assert!(!dfa.find_accept("xyz"));
+        assert!(dfa.find_accept("aaaabc"));
+        assert!(dfa.find_accept("bar\nfooabc"));
+    }
+
+    #[test]
+    fn partial_alternation_overlap() {
+        let dfa = unanchored_dfa_from_pattern("a+b|ac");
+        assert!(dfa.find_accept("aaac"));
+        assert!(dfa.find_accept("xxaaabxx"));
+        assert!(!dfa.find_accept("aaa"));
+        assert!(dfa.find_accept("yac"));
+    }
+
+    #[test]
+    fn partial_empty_match() {
+        let dfa = unanchored_dfa_from_pattern("a*");
+        assert!(dfa.find_accept("xyz"));
+        assert!(dfa.find_accept(""));
+        assert!(dfa.find_accept("aaa"));
+    }
+
+    #[test]
+    fn partial_digit_class() {
+        let dfa = unanchored_dfa_from_pattern(r"\d+");
+        assert!(dfa.find_accept("age: 42 years"));
+        assert!(!dfa.find_accept("no digits"));
+        assert!(dfa.find_accept("0"));
+        let mut saw_find = false;
+        for state in 0..dfa.state_count {
+            if dfa.accels[state].class_find == Some(crate::charclass::CharClass::Digit) {
+                saw_find = true;
+            }
+        }
+        assert!(saw_find);
+    }
+
+    #[test]
+    fn partial_start_needles() {
+        let dfa = unanchored_dfa_from_pattern("(p(erl|ython|hp)|ruby)");
+        assert!(dfa.find_accept("I write python code"));
+        assert!(dfa.find_accept("ruby"));
+        assert!(!dfa.find_accept("I write rust code"));
+        let start_accel = dfa.accels[dfa.start() as usize];
+        assert!(start_accel.needle_len >= 1);
+    }
+
+    #[test]
+    fn partial_a_plus_b_long() {
+        let dfa = unanchored_dfa_from_pattern("a+b");
+        assert!(!dfa.find_accept(&"a".repeat(10_000)));
+        assert!(dfa.find_accept(&format!("xx{}b", "a".repeat(10_000))));
     }
 }

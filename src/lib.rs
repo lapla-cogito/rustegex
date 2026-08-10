@@ -3,6 +3,7 @@ mod charclass;
 mod derivative;
 mod error;
 mod lexer;
+mod literals;
 mod parser;
 mod vm;
 
@@ -13,14 +14,23 @@ static MIMALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[derive(Debug)]
 enum Regex {
-    Dfa { dfa: automaton::dfa::Dfa },
-    Vm { vm: vm::Vm },
-    Derivative { derivative: derivative::Derivative },
+    Dfa {
+        dfa: automaton::dfa::Dfa,
+        unanchored: automaton::dfa::Dfa,
+    },
+    Vm {
+        vm: vm::Vm,
+    },
+    Derivative {
+        derivative: derivative::Derivative,
+    },
 }
 
 #[derive(Debug)]
 pub struct Engine {
     regex: Regex,
+    literal: Option<Box<[u8]>>,
+    prefilter: Option<literals::Prefilter>,
 }
 
 impl Engine {
@@ -28,15 +38,25 @@ impl Engine {
         let mut lexer = lexer::Lexer::new(input);
         let mut parser = parser::Parser::new(&mut lexer);
         let ast = parser.parse()?;
+        let literal = ast.as_literal().map(|s| s.into_bytes().into_boxed_slice());
+        let prefilter = if literal.is_none() {
+            literals::build_prefilter(&ast)
+        } else {
+            None
+        };
 
         match method {
             "dfa" => {
-                let nfa =
-                    automaton::nfa::Nfa::new_from_node(ast, &mut automaton::nfa::NfaState::new())?;
+                let mut nfa_state = automaton::nfa::NfaState::new();
+                let nfa = automaton::nfa::Nfa::new_from_node(ast, &mut nfa_state)?;
                 let dfa = automaton::dfa::Dfa::from_nfa(&nfa);
+                let unanchored =
+                    automaton::dfa::Dfa::from_nfa(&nfa.with_unanchored_start(&mut nfa_state));
 
                 Ok(Engine {
-                    regex: Regex::Dfa { dfa },
+                    regex: Regex::Dfa { dfa, unanchored },
+                    literal,
+                    prefilter,
                 })
             }
             "vm" => {
@@ -44,6 +64,8 @@ impl Engine {
 
                 Ok(Engine {
                     regex: Regex::Vm { vm },
+                    literal,
+                    prefilter,
                 })
             }
             "derivative" => {
@@ -51,6 +73,8 @@ impl Engine {
 
                 Ok(Engine {
                     regex: Regex::Derivative { derivative },
+                    literal,
+                    prefilter,
                 })
             }
             _ => Err(Error::InvalidMethod(method.to_string())),
@@ -59,7 +83,7 @@ impl Engine {
 
     pub fn is_match(&self, input: &str) -> bool {
         match &self.regex {
-            Regex::Dfa { dfa } => dfa.is_match(input),
+            Regex::Dfa { dfa, .. } => dfa.is_match(input),
             Regex::Vm { vm } => vm.is_match(input),
             Regex::Derivative { derivative } => {
                 if input.is_empty() {
@@ -67,6 +91,31 @@ impl Engine {
                 }
                 derivative.is_match(input)
             }
+        }
+    }
+
+    pub fn is_partial_match(&self, input: &str) -> bool {
+        if let Some(lit) = &self.literal {
+            return if lit.is_empty() {
+                true
+            } else {
+                memchr::memmem::find(input.as_bytes(), lit).is_some()
+            };
+        }
+
+        let input = if let Some(prefilter) = &self.prefilter {
+            let Some(at) = prefilter.find_first(input.as_bytes()) else {
+                return false;
+            };
+            &input[at..]
+        } else {
+            input
+        };
+
+        match &self.regex {
+            Regex::Dfa { unanchored, .. } => unanchored.find_accept(input),
+            Regex::Vm { vm } => vm.is_partial_match(input),
+            Regex::Derivative { derivative } => derivative.is_partial_match(input),
         }
     }
 }
@@ -119,6 +168,14 @@ mod tests {
         assert!(regex.is_match("aab"));
         assert!(regex.is_match("aaab"));
         assert!(!regex.is_match("a"));
+        assert!(!regex.is_match("b"));
+        assert!(!regex.is_match(""));
+
+        let regex = Engine::new("a+", "dfa").unwrap();
+        assert!(regex.is_match("a"));
+        assert!(regex.is_match("aaa"));
+        assert!(!regex.is_match(""));
+        assert!(!regex.is_match("b"));
     }
 
     #[test]
@@ -262,6 +319,14 @@ mod tests {
         assert!(regex.is_match("aab"));
         assert!(regex.is_match("aaab"));
         assert!(!regex.is_match("a"));
+        assert!(!regex.is_match("b"));
+        assert!(!regex.is_match(""));
+
+        let regex = Engine::new("a+", "vm").unwrap();
+        assert!(regex.is_match("a"));
+        assert!(regex.is_match("aaa"));
+        assert!(!regex.is_match(""));
+        assert!(!regex.is_match("b"));
     }
 
     #[test]
@@ -405,6 +470,14 @@ mod tests {
         assert!(regex.is_match("aab"));
         assert!(regex.is_match("aaab"));
         assert!(!regex.is_match("a"));
+        assert!(!regex.is_match("b"));
+        assert!(!regex.is_match(""));
+
+        let regex = Engine::new("a+", "derivative").unwrap();
+        assert!(regex.is_match("a"));
+        assert!(regex.is_match("aaa"));
+        assert!(!regex.is_match(""));
+        assert!(!regex.is_match("b"));
     }
 
     #[test]
@@ -619,6 +692,141 @@ mod tests {
         ];
         for (pattern, yes, no) in cases {
             assert_match_all("derivative", pattern, yes, no);
+        }
+    }
+
+    fn assert_partial_all(method: &'static str, pattern: &str, yes: &[&str], no: &[&str]) {
+        let engine = Engine::new(pattern, method).unwrap();
+        let re = regex::Regex::new(pattern).unwrap();
+        for input in yes {
+            assert!(
+                engine.is_partial_match(input),
+                "method={method} pattern={pattern:?} input={input:?} expected partial match"
+            );
+            assert!(
+                re.is_match(input),
+                "oracle regex disagrees (yes) pattern={pattern:?} input={input:?}"
+            );
+        }
+        for input in no {
+            assert!(
+                !engine.is_partial_match(input),
+                "method={method} pattern={pattern:?} input={input:?} expected no partial match"
+            );
+            assert!(
+                !re.is_match(input),
+                "oracle regex disagrees (no) pattern={pattern:?} input={input:?}"
+            );
+        }
+    }
+
+    fn partial_cases() -> [(
+        &'static str,
+        &'static [&'static str],
+        &'static [&'static str],
+    ); 10] {
+        [
+            (
+                "abc",
+                &["abc", "xyzabcdef", "ababc", "bar\nfooabc"][..],
+                &["ab", "xyz", ""][..],
+            ),
+            (
+                "a+b",
+                &["ab", "xxaaabxx", "aaab"][..],
+                &["aaa", "b", ""][..],
+            ),
+            (
+                "a+b|ac",
+                &["aaac", "xxaaabxx", "yac", "ac"][..],
+                &["aaa", ""][..],
+            ),
+            ("a*", &["", "xyz", "aaa"][..], &[][..]),
+            (
+                "(p(erl|ython|hp)|ruby)",
+                &["perl", "I write python code", "ruby is fun"][..],
+                &["I write rust code", ""][..],
+            ),
+            (
+                r"\d+",
+                &["0", "age: 42 years", "x9"][..],
+                &["no digits", ""][..],
+            ),
+            (
+                "a.b",
+                &["aXb", "xxaXbxx", "a b"][..],
+                &["ab", "a\nb", ""][..],
+            ),
+            (
+                "foo",
+                &["foo", "bar\nfoo", "fffoo"][..],
+                &["fo", "bar\nf o"][..],
+            ),
+            (
+                "正規表現(太郎|次郎)",
+                &["正規表現太郎", "私は正規表現次郎です"][..],
+                &["正規表現三郎", ""][..],
+            ),
+            ("aa", &["aa", "aaa", "baab"][..], &["a", ""][..]),
+        ]
+    }
+
+    #[test]
+    fn partial_dfa() {
+        for (pattern, yes, no) in partial_cases() {
+            assert_partial_all("dfa", pattern, yes, no);
+        }
+    }
+
+    #[test]
+    fn partial_vm() {
+        for (pattern, yes, no) in partial_cases() {
+            assert_partial_all("vm", pattern, yes, no);
+        }
+    }
+
+    #[test]
+    fn partial_derivative() {
+        for (pattern, yes, no) in partial_cases() {
+            assert_partial_all("derivative", pattern, yes, no);
+        }
+    }
+
+    #[test]
+    fn partial_does_not_change_full_match() {
+        for method in ["dfa", "vm", "derivative"] {
+            let engine = Engine::new("abc", method).unwrap();
+            assert!(engine.is_match("abc"));
+            assert!(!engine.is_match("xabc"));
+            assert!(!engine.is_match("abcx"));
+            assert!(engine.is_partial_match("xabc"));
+            assert!(engine.is_partial_match("abcx"));
+        }
+    }
+
+    #[test]
+    fn partial_prefilter_alt_in_lorem() {
+        let hay_yes = format!("{}python", "lorem ipsum ".repeat(200));
+        let hay_no = "lorem ipsum ".repeat(200);
+        for method in ["dfa", "vm", "derivative"] {
+            let engine = Engine::new("(p(erl|ython|hp)|ruby)", method).unwrap();
+            assert!(engine.prefilter.is_some(), "method={method}");
+            assert!(engine.is_partial_match(&hay_yes), "method={method}");
+            assert!(!engine.is_partial_match(&hay_no), "method={method}");
+            assert!(engine.is_partial_match("xxphpxx"), "method={method}");
+            assert!(engine.is_partial_match("ruby"), "method={method}");
+        }
+    }
+
+    #[test]
+    fn partial_prefilter_plus_suffix() {
+        for method in ["dfa", "vm", "derivative"] {
+            let engine = Engine::new("abc+d", method).unwrap();
+            assert!(engine.prefilter.is_some(), "method={method}");
+            assert!(engine.is_partial_match("xxabcabcdyy"), "method={method}");
+            assert!(engine.is_partial_match("abcd"), "method={method}");
+            assert!(!engine.is_partial_match("abcabc"), "method={method}");
+            assert!(!engine.is_partial_match("abxd"), "method={method}");
         }
     }
 }

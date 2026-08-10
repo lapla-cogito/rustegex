@@ -60,6 +60,7 @@ impl std::fmt::Display for Token {
             Token::Class(crate::charclass::CharClass::Digit) => write!(f, r"\d"),
             Token::Class(crate::charclass::CharClass::Word) => write!(f, r"\w"),
             Token::Class(crate::charclass::CharClass::Space) => write!(f, r"\s"),
+            Token::Class(crate::charclass::CharClass::DotAll) => write!(f, r"[\s\S]"),
             Token::UnionOperator => write!(f, "|"),
             Token::StarOperator => write!(f, "*"),
             Token::PlusOperator => write!(f, "+"),

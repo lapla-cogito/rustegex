@@ -22,10 +22,9 @@ impl Compiler {
                 self.builder.emit_class(class);
             }
             crate::parser::AstNode::Plus(node) => {
-                let split = self.builder.reserve_split();
                 let start = self.builder.pc();
                 self._compile(*node)?;
-                self.builder.emit_jmp(split);
+                let split = self.builder.reserve_split();
                 let end = self.builder.pc();
                 self.builder.patch_split(split, start, end);
             }
