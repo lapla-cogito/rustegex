@@ -171,35 +171,57 @@ $ cargo bench --bench benchmark
 
 Comparison against the [`regex`](https://crates.io/crates/regex) crate.
 
-### case 1
+For all benchmarks, please treat the derivative engine as a reference value. This is because this engine is specifically designed for experimentation rather than serious performance optimization.
+
+### Full-string `is_match`
+
+rustegex `is_match` requires the entire input to match. `regex::Regex::is_match` is an unanchored search, so these numbers are not always the same problem.
+
+#### case 1
 
 Pattern `(p(erl|ython|hp)|ruby)`
 
 ![case 1](img/case-1.svg)
 
-### case 2
+#### case 2
 
 Pattern `ab(cd|)ef|g*|h+`
 
 ![case 2](img/case-2.svg)
 
-### case long
+#### case long
 
-Pattern `a+b`, input is 1,000,000 a characters
+Pattern `a+b`, input is 1,000,000 `a` characters
 
 ![case long](img/case-long.svg)
 
-### case meta
+#### case meta
 
 Pattern `a\db|\s\w+|.\d`
 
 ![case meta](img/case-meta.svg)
 
-### case meta long
+#### case meta long
 
 Pattern `\d+`, input is 1,000,000 ASCII digits
 
 ![case meta long](img/case-meta-long.svg)
+
+### Partial search
+
+rustegex `is_partial_match` versus `regex::Regex::is_match` (both unanchored).
+
+#### partial literal
+
+Pattern `Sherlock` in a ~600 KB haystack
+
+![partial literal](img/partial-literal.svg)
+
+#### partial alt
+
+Pattern `(p(erl|ython|hp)|ruby)` in a 240 KB haystack
+
+![partial alt](img/partial-alt.svg)
 
 <!-- bench-graphs:end -->
 

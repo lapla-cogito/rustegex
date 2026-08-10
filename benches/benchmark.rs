@@ -138,13 +138,6 @@ fn bench_partial(
         });
     });
 
-    let derivative = rustegex::Engine::new(pattern, "derivative").unwrap();
-    group.bench_function("rustegex/derivative", |b| {
-        b.iter(|| {
-            derivative.is_partial_match(input);
-        });
-    });
-
     let re = regex::Regex::new(pattern).unwrap();
     group.bench_function("regex", |b| {
         b.iter(|| {
