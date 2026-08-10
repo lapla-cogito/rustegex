@@ -1,28 +1,29 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="720" height="360" viewBox="0 0 720 360">
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="378" viewBox="0 0 720 378">
 <rect width="100%" height="100%" fill="#ffffff"/>
 <style>text { font-family: ui-sans-serif, system-ui, sans-serif; fill: #1f2937; }.title { font-size: 18px; font-weight: 700; }.subtitle { font-size: 12px; fill: #4b5563; }.label { font-size: 13px; }.value { font-size: 12px; fill: #374151; }.axis { stroke: #9ca3af; stroke-width: 1; }.tick { stroke: #d1d5db; stroke-width: 1; }.tick-label { font-size: 11px; fill: #6b7280; }</style>
-<text class="title" x="170" y="28">partial short alt: Pattern `ab|cd` in a 240 KB haystack (2-byte prefix prefilter)</text>
-<text class="subtitle" x="170" y="46">Lower is better (linear scale)</text>
-<line class="axis" x1="170" y1="316" x2="653" y2="316"/>
-<line class="axis" x1="170" y1="56" x2="170" y2="316"/>
-<line class="tick" x1="170.0" y1="56" x2="170.0" y2="316"/>
-<text class="tick-label" x="170.0" y="334" text-anchor="middle">0.0 ns</text>
-<line class="tick" x1="290.8" y1="56" x2="290.8" y2="316"/>
-<text class="tick-label" x="290.8" y="334" text-anchor="middle">2.50 µs</text>
-<line class="tick" x1="411.5" y1="56" x2="411.5" y2="316"/>
-<text class="tick-label" x="411.5" y="334" text-anchor="middle">5.00 µs</text>
-<line class="tick" x1="532.2" y1="56" x2="532.2" y2="316"/>
-<text class="tick-label" x="532.2" y="334" text-anchor="middle">7.50 µs</text>
-<line class="tick" x1="653.0" y1="56" x2="653.0" y2="316"/>
-<text class="tick-label" x="653.0" y="334" text-anchor="middle">10.00 µs</text>
-<rect x="170.0" y="56.0" width="419.8" height="74.7" fill="#4c78a8" rx="4"/>
-<text class="label" x="160" y="97.33333333333334" text-anchor="end">rustegex DFA</text>
-<text class="value" x="597.8" y="97.33333333333334">8.69 µs</text>
-<rect x="170.0" y="148.7" width="420.9" height="74.7" fill="#59a14f" rx="4"/>
-<text class="label" x="160" y="190.00000000000003" text-anchor="end">rustegex VM</text>
-<text class="value" x="598.9" y="190.00000000000003">8.72 µs</text>
-<rect x="170.0" y="241.3" width="435.3" height="74.7" fill="#b279a2" rx="4"/>
-<text class="label" x="160" y="282.6666666666667" text-anchor="end">regex crate</text>
-<text class="value" x="613.3" y="282.6666666666667">9.01 µs</text>
+<text class="title" x="16" y="28">partial short alt: Pattern `ab|cd` in a 240 KB haystack</text>
+<text class="title" x="16" y="50">(2-byte prefix prefilter)</text>
+<text class="subtitle" x="16" y="68">Lower is better (linear scale)</text>
+<line class="axis" x1="170" y1="334" x2="653" y2="334"/>
+<line class="axis" x1="170" y1="74" x2="170" y2="334"/>
+<line class="tick" x1="170.0" y1="74" x2="170.0" y2="334"/>
+<text class="tick-label" x="170.0" y="352" text-anchor="middle">0.0 ns</text>
+<line class="tick" x1="290.8" y1="74" x2="290.8" y2="334"/>
+<text class="tick-label" x="290.8" y="352" text-anchor="middle">2.50 µs</text>
+<line class="tick" x1="411.5" y1="74" x2="411.5" y2="334"/>
+<text class="tick-label" x="411.5" y="352" text-anchor="middle">5.00 µs</text>
+<line class="tick" x1="532.2" y1="74" x2="532.2" y2="334"/>
+<text class="tick-label" x="532.2" y="352" text-anchor="middle">7.50 µs</text>
+<line class="tick" x1="653.0" y1="74" x2="653.0" y2="334"/>
+<text class="tick-label" x="653.0" y="352" text-anchor="middle">10.00 µs</text>
+<rect x="170.0" y="74.0" width="419.8" height="74.7" fill="#4c78a8" rx="4"/>
+<text class="label" x="160" y="115.33333333333334" text-anchor="end">rustegex DFA</text>
+<text class="value" x="597.8" y="115.33333333333334">8.69 µs</text>
+<rect x="170.0" y="166.7" width="420.9" height="74.7" fill="#59a14f" rx="4"/>
+<text class="label" x="160" y="208.00000000000003" text-anchor="end">rustegex VM</text>
+<text class="value" x="598.9" y="208.00000000000003">8.72 µs</text>
+<rect x="170.0" y="259.3" width="435.3" height="74.7" fill="#b279a2" rx="4"/>
+<text class="label" x="160" y="300.6666666666667" text-anchor="end">regex crate</text>
+<text class="value" x="613.3" y="300.6666666666667">9.01 µs</text>
 </svg>
