@@ -199,6 +199,162 @@ fn pike_eval_vec(inst: &crate::vm::instruction::Program, input: &str) -> bool {
     })
 }
 
+fn mask_has_match(inst: &crate::vm::instruction::Program, mask: u64) -> bool {
+    let mut found = false;
+    for_each_set_bit(mask, |pc| {
+        if inst.opcode(pc) == crate::vm::instruction::OP_MATCH {
+            found = true;
+        }
+    });
+    found
+}
+
+#[inline(never)]
+fn pike_eval_bitmask_partial(inst: &crate::vm::instruction::Program, input: &str) -> bool {
+    let start = inst.epsilon_mask(0);
+    let mut current = start;
+
+    if mask_has_match(inst, current) {
+        return true;
+    }
+
+    if input.is_ascii() {
+        for &byte in input.as_bytes() {
+            let mut next: u64 = 0;
+            for_each_set_bit(current, |pc| match inst.opcode(pc) {
+                crate::vm::instruction::OP_CHAR => {
+                    let expected = inst.operand1(pc);
+                    if expected <= 127 && expected as u8 == byte {
+                        next |= inst.epsilon_mask(pc + 1);
+                    }
+                }
+                crate::vm::instruction::OP_CLASS if inst.char_class(pc).matches(byte as char) => {
+                    next |= inst.epsilon_mask(pc + 1);
+                }
+                _ => {}
+            });
+            current = next | start;
+            if mask_has_match(inst, current) {
+                return true;
+            }
+        }
+    } else {
+        for ch in input.chars() {
+            let mut next: u64 = 0;
+            for_each_set_bit(current, |pc| match inst.opcode(pc) {
+                crate::vm::instruction::OP_CHAR => {
+                    if inst.char_literal(pc) == ch {
+                        next |= inst.epsilon_mask(pc + 1);
+                    }
+                }
+                crate::vm::instruction::OP_CLASS if inst.char_class(pc).matches(ch) => {
+                    next |= inst.epsilon_mask(pc + 1);
+                }
+                _ => {}
+            });
+            current = next | start;
+            if mask_has_match(inst, current) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+#[inline(never)]
+fn pike_eval_vec_partial(inst: &crate::vm::instruction::Program, input: &str) -> bool {
+    let program_size = inst.len();
+
+    BUFFERS.with(|cell| {
+        let bufs = &mut *cell.borrow_mut();
+        bufs.ensure_capacity(program_size);
+        bufs.current.clear();
+        bufs.next.clear();
+
+        let g = bufs.next_gen();
+        extend_epsilon_list(inst, 0, &mut bufs.current, &mut bufs.gen_arr, g);
+
+        let has_match = |pcs: &[usize]| {
+            pcs.iter()
+                .any(|&pc| inst.opcode(pc) == crate::vm::instruction::OP_MATCH)
+        };
+
+        if has_match(&bufs.current) {
+            return true;
+        }
+
+        if input.is_ascii() {
+            for &byte in input.as_bytes() {
+                let g = bufs.next_gen();
+                let len = bufs.current.len();
+                for i in 0..len {
+                    let pc = *unsafe { bufs.current.get_unchecked(i) };
+                    match inst.opcode(pc) {
+                        crate::vm::instruction::OP_CHAR => {
+                            let expected = inst.operand1(pc);
+                            if expected <= 127 && expected as u8 == byte {
+                                extend_epsilon_list(
+                                    inst,
+                                    pc + 1,
+                                    &mut bufs.next,
+                                    &mut bufs.gen_arr,
+                                    g,
+                                );
+                            }
+                        }
+                        crate::vm::instruction::OP_CLASS
+                            if inst.char_class(pc).matches(byte as char) =>
+                        {
+                            extend_epsilon_list(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
+                        }
+                        _ => {}
+                    }
+                }
+                extend_epsilon_list(inst, 0, &mut bufs.next, &mut bufs.gen_arr, g);
+                std::mem::swap(&mut bufs.current, &mut bufs.next);
+                bufs.next.clear();
+                if has_match(&bufs.current) {
+                    return true;
+                }
+            }
+        } else {
+            for ch in input.chars() {
+                let g = bufs.next_gen();
+                let len = bufs.current.len();
+                for i in 0..len {
+                    let pc = *unsafe { bufs.current.get_unchecked(i) };
+                    match inst.opcode(pc) {
+                        crate::vm::instruction::OP_CHAR => {
+                            if inst.char_literal(pc) == ch {
+                                extend_epsilon_list(
+                                    inst,
+                                    pc + 1,
+                                    &mut bufs.next,
+                                    &mut bufs.gen_arr,
+                                    g,
+                                );
+                            }
+                        }
+                        crate::vm::instruction::OP_CLASS if inst.char_class(pc).matches(ch) => {
+                            extend_epsilon_list(inst, pc + 1, &mut bufs.next, &mut bufs.gen_arr, g);
+                        }
+                        _ => {}
+                    }
+                }
+                extend_epsilon_list(inst, 0, &mut bufs.next, &mut bufs.gen_arr, g);
+                std::mem::swap(&mut bufs.current, &mut bufs.next);
+                bufs.next.clear();
+                if has_match(&bufs.current) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    })
+}
+
 pub fn eval(
     inst: &crate::vm::instruction::Program,
     input: &str,
@@ -213,6 +369,18 @@ pub fn eval(
         pike_eval_bitmask(inst, input)
     } else {
         pike_eval_vec(inst, input)
+    }
+}
+
+pub fn eval_partial(inst: &crate::vm::instruction::Program, input: &str) -> bool {
+    let program_size = inst.len();
+    if program_size == 0 {
+        return false;
+    }
+    if program_size <= 64 {
+        pike_eval_bitmask_partial(inst, input)
+    } else {
+        pike_eval_vec_partial(inst, input)
     }
 }
 
@@ -287,5 +455,29 @@ mod tests {
         assert!(!compile_and_eval("abc", "ab"));
         assert!(!compile_and_eval("abc", "abcd"));
         assert!(!compile_and_eval("abc", ""));
+    }
+
+    fn compile_and_eval_partial(pattern: &str, input: &str) -> bool {
+        let mut lexer = crate::lexer::Lexer::new(pattern);
+        let mut parser = crate::parser::Parser::new(&mut lexer);
+        let ast = parser.parse().unwrap();
+        let mut compiler = crate::vm::compile::Compiler::new();
+        compiler.compile(ast).unwrap();
+        let inst = compiler.finish();
+        eval_partial(&inst, input)
+    }
+
+    #[test]
+    fn evaluation_partial() {
+        assert!(compile_and_eval_partial("abc", "xyzabcdef"));
+        assert!(!compile_and_eval_partial("abc", "xyz"));
+        assert!(compile_and_eval_partial("a+b|ac", "aaac"));
+        assert!(compile_and_eval_partial("a*", "xyz"));
+        assert!(compile_and_eval_partial("foo", "bar\nfoo"));
+        assert!(!compile_and_eval_partial("a+b", &"a".repeat(100)));
+        assert!(compile_and_eval_partial(
+            "(p(erl|ython|hp)|ruby)",
+            "I write python"
+        ));
     }
 }

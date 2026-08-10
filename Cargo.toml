@@ -12,6 +12,7 @@ bit-set = "0.10.0"
 foldhash = "0.2.0"
 memchr = "2.8.2"
 mimalloc = "0.1.48"
+aho-corasick = "1"
 
 [dev-dependencies]
 criterion = "0.8.0"

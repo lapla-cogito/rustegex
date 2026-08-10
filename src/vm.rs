@@ -20,4 +20,8 @@ impl Vm {
     pub fn is_match(&self, input: &str) -> bool {
         eval::eval(&self.bytecode, input, 0, 0)
     }
+
+    pub fn is_partial_match(&self, input: &str) -> bool {
+        eval::eval_partial(&self.bytecode, input)
+    }
 }

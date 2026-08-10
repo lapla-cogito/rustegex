@@ -144,6 +144,7 @@ impl AstArena {
 pub struct Derivative {
     arena: std::cell::RefCell<AstArena>,
     start: AstId,
+    unanchored_start: AstId,
     canonical: crate::parser::AstNode,
     max_ast_size: usize,
     derivative_memo: std::cell::RefCell<foldhash::HashMap<(AstId, char), AstId>>,
@@ -153,11 +154,15 @@ impl Derivative {
     pub fn new(ast: crate::parser::AstNode) -> Self {
         let mut arena = AstArena::new();
         let start = from_parser(&mut arena, &ast);
+        let any = mk_class(&mut arena, crate::charclass::CharClass::DotAll);
+        let skip = mk_star(&mut arena, any);
+        let unanchored_start = mk_seq(&mut arena, skip, start);
         let canonical = arena.export(start);
 
         Derivative {
             arena: std::cell::RefCell::new(arena),
             start,
+            unanchored_start,
             canonical,
             max_ast_size: DEFAULT_MAX_AST_SIZE,
             derivative_memo: std::cell::RefCell::new(foldhash::HashMap::new()),
@@ -179,6 +184,31 @@ impl Derivative {
         }
 
         arena.nullable_of(state)
+    }
+
+    pub fn is_partial_match(&self, input: &str) -> bool {
+        let mut arena = self.arena.borrow_mut();
+        let mut memo = self.derivative_memo.borrow_mut();
+        memo.clear();
+        let mut state = self.unanchored_start;
+
+        if arena.nullable_of(state) {
+            return true;
+        }
+
+        for ch in input.chars() {
+            state = derivative_with_cache(&mut arena, state, ch, &mut memo);
+
+            if arena.structural_size_of(state) > self.max_ast_size {
+                return match_fallback_partial(&self.canonical, input);
+            }
+
+            if arena.nullable_of(state) {
+                return true;
+            }
+        }
+
+        false
     }
 
     pub fn is_empty_match(&self) -> bool {
@@ -400,6 +430,25 @@ fn match_fallback(original: &crate::parser::AstNode, input: &str) -> bool {
         ast = derivative_parser(&ast, ch);
     }
     contain_epsilon_parser(&ast)
+}
+
+fn match_fallback_partial(original: &crate::parser::AstNode, input: &str) -> bool {
+    let mut ast = crate::parser::AstNode::Seq(
+        Box::new(crate::parser::AstNode::Star(Box::new(
+            crate::parser::AstNode::Class(crate::charclass::CharClass::DotAll),
+        ))),
+        Box::new(original.clone()),
+    );
+    if contain_epsilon_parser(&ast) {
+        return true;
+    }
+    for ch in input.chars() {
+        ast = derivative_parser(&ast, ch);
+        if contain_epsilon_parser(&ast) {
+            return true;
+        }
+    }
+    false
 }
 
 fn derivative_parser(ast: &crate::parser::AstNode, c: char) -> crate::parser::AstNode {

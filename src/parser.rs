@@ -31,6 +31,29 @@ impl Clone for AstNode {
     }
 }
 
+impl AstNode {
+    pub fn as_literal(&self) -> Option<String> {
+        let mut out = String::new();
+        self.append_literal(&mut out)?;
+        Some(out)
+    }
+
+    fn append_literal(&self, out: &mut String) -> Option<()> {
+        match self {
+            AstNode::Char(c) => {
+                out.push(*c);
+                Some(())
+            }
+            AstNode::Seq(left, right) => {
+                left.append_literal(out)?;
+                right.append_literal(out)
+            }
+            AstNode::Epsilon => Some(()),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Parser<'a> {
     lexer: &'a mut crate::lexer::Lexer<'a>,

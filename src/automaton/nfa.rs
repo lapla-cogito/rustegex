@@ -111,7 +111,6 @@ impl Nfa {
 
                 nfa.transitions.extend(remain.transitions.clone());
                 nfa.add_epsilon_transition(start, remain.start);
-                nfa.add_epsilon_transition(start, accept);
                 for accept_state in remain.accept.iter() {
                     nfa.add_epsilon_transition(*accept_state, remain.start);
                     nfa.add_epsilon_transition(*accept_state, accept);
@@ -183,6 +182,14 @@ impl Nfa {
             }
             crate::parser::AstNode::Empty => unreachable!(),
         }
+    }
+
+    pub fn with_unanchored_start(mut self, state: &mut NfaState) -> Nfa {
+        let new_start = state.new_state();
+        self.add_epsilon_transition(new_start, self.start);
+        self.add_class_transition(new_start, crate::charclass::CharClass::DotAll, new_start);
+        self.start = new_start;
+        self
     }
 
     pub fn epsilon_closure_with_bitset(&self, start: &bit_set::BitSet) -> bit_set::BitSet {
@@ -339,7 +346,6 @@ mod tests {
             vec![
                 (1, NfaLabel::Epsilon, 3),
                 (0, NfaLabel::Char('a'), 1),
-                (2, NfaLabel::Epsilon, 3),
                 (1, NfaLabel::Epsilon, 0),
                 (2, NfaLabel::Epsilon, 0)
             ]
@@ -418,7 +424,6 @@ mod tests {
             vec![
                 (4, NfaLabel::Epsilon, 2),
                 (3, NfaLabel::Epsilon, 2),
-                (4, NfaLabel::Epsilon, 5),
                 (0, NfaLabel::Char('a'), 1),
                 (2, NfaLabel::Char('b'), 3),
                 (3, NfaLabel::Epsilon, 5),
@@ -500,7 +505,6 @@ mod tests {
                 (2, NfaLabel::Char('b'), 3),
                 (7, NfaLabel::Epsilon, 5),
                 (1, NfaLabel::Epsilon, 6),
-                (5, NfaLabel::Epsilon, 6),
                 (4, NfaLabel::Epsilon, 0),
                 (4, NfaLabel::Epsilon, 2),
                 (0, NfaLabel::Char('a'), 1),

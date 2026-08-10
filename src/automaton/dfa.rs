@@ -8,27 +8,37 @@ const ACCEL_MIN_REMAINING: usize = 32;
 struct Accel {
     loop_byte: Option<u8>,
     class_loop: Option<(crate::charclass::CharClass, DfaStateID)>,
+    class_find: Option<crate::charclass::CharClass>,
     needles: [u8; 3],
     needle_len: u8,
+    // Bitmask of ASCII exit bytes when there are more than 3 distinct exits.
+    exit_mask: u128,
 }
 
 impl Accel {
     fn is_enabled(self) -> bool {
-        self.loop_byte.is_some() || self.class_loop.is_some() || self.needle_len > 0
+        self.loop_byte.is_some()
+            || self.class_loop.is_some()
+            || self.class_find.is_some()
+            || self.needle_len > 0
+            || self.exit_mask != 0
     }
 
     fn memchr_fwd(&self, haystack: &[u8], at: usize) -> Option<usize> {
-        if self.needle_len == 0 {
-            return None;
+        if self.needle_len > 0 {
+            let slice = &haystack[at..];
+            let offset = match self.needle_len {
+                1 => memchr::memchr(self.needles[0], slice)?,
+                2 => memchr::memchr2(self.needles[0], self.needles[1], slice)?,
+                3 => memchr::memchr3(self.needles[0], self.needles[1], self.needles[2], slice)?,
+                _ => return None,
+            };
+            return Some(at + offset);
         }
-        let slice = &haystack[at..];
-        let offset = match self.needle_len {
-            1 => memchr::memchr(self.needles[0], slice)?,
-            2 => memchr::memchr2(self.needles[0], self.needles[1], slice)?,
-            3 => memchr::memchr3(self.needles[0], self.needles[1], self.needles[2], slice)?,
-            _ => return None,
-        };
-        Some(at + offset)
+        if self.exit_mask != 0 {
+            return crate::charclass::find_exit_mask(haystack, at, self.exit_mask);
+        }
+        None
     }
 }
 
@@ -36,6 +46,8 @@ impl Accel {
 pub struct Dfa {
     start: DfaStateID,
     accepts: bit_set::BitSet,
+    // Flat accept flags for the match hot path (indexed by state id).
+    accept_flags: Vec<bool>,
     state_count: usize,
     ascii_table: Vec<DfaStateID>,
     unicode_table: Vec<foldhash::HashMap<char, DfaStateID>>,
@@ -48,6 +60,7 @@ impl Dfa {
         Dfa {
             start,
             accepts,
+            accept_flags: Vec::new(),
             state_count: 0,
             ascii_table: Vec::new(),
             unicode_table: Vec::new(),
@@ -58,6 +71,11 @@ impl Dfa {
 
     pub fn start(&self) -> DfaStateID {
         self.start
+    }
+
+    #[inline(always)]
+    fn is_accept(&self, state: DfaStateID) -> bool {
+        *unsafe { self.accept_flags.get_unchecked(state as usize) }
     }
 
     #[cfg(test)]
@@ -204,6 +222,7 @@ impl Dfa {
         dfa.ascii_table = vec![DEAD; state_count * 128];
         dfa.unicode_table = vec![foldhash::HashMap::new(); state_count];
         dfa.unicode_class = vec![Vec::new(); state_count];
+        dfa.accept_flags = (0..state_count).map(|s| dfa.accepts.contains(s)).collect();
 
         for (from, class, to) in raw_class_transitions {
             dfa.unicode_class[from as usize].push((class, to));
@@ -258,7 +277,94 @@ impl Dfa {
             }
         }
 
-        self.accepts.contains(state as usize)
+        self.is_accept(state)
+    }
+
+    pub fn find_accept(&self, input: &str) -> bool {
+        let mut state = self.start();
+        if self.is_accept(state) {
+            return true;
+        }
+
+        if input.is_ascii() {
+            self.search_ascii(input.as_bytes(), state)
+        } else {
+            let table = &self.ascii_table;
+            let unicode = &self.unicode_table;
+            for c in input.chars() {
+                if c.is_ascii() {
+                    let next = *unsafe { table.get_unchecked(state as usize * 128 + c as usize) };
+                    if next == DEAD {
+                        return false;
+                    }
+                    state = next;
+                } else if let Some(&next) = unicode[state as usize].get(&c) {
+                    state = next;
+                } else if let Some(next) = Self::step_class(state, c, &self.unicode_class) {
+                    state = next;
+                } else {
+                    return false;
+                }
+                if self.is_accept(state) {
+                    return true;
+                }
+            }
+            false
+        }
+    }
+
+    fn search_ascii(&self, bytes: &[u8], mut state: DfaStateID) -> bool {
+        let table = &self.ascii_table;
+        let mut at = 0usize;
+        let len = bytes.len();
+
+        while at < len {
+            let remaining = len - at;
+            if remaining >= ACCEL_MIN_REMAINING {
+                let accel = self.accels[state as usize];
+                if accel.is_enabled() {
+                    if let Some(class) = accel.class_find {
+                        match class.find_byte(bytes, at) {
+                            Some(hit) => at = hit,
+                            None => return false,
+                        }
+                    } else if let Some((class, next_state)) = accel.class_loop {
+                        let start = at;
+                        at = class.skip_bytes(bytes, at);
+                        if at > start {
+                            state = next_state;
+                            if self.is_accept(state) {
+                                return true;
+                            }
+                            if at >= len {
+                                return false;
+                            }
+                            continue;
+                        }
+                    } else if let Some(loop_byte) = accel.loop_byte {
+                        at = crate::charclass::skip_equal_bytes(bytes, at, loop_byte);
+                        if at >= len {
+                            return self.is_accept(state);
+                        }
+                    } else if let Some(hit) = accel.memchr_fwd(bytes, at) {
+                        at = hit;
+                    }
+                }
+            }
+
+            let byte = bytes[at];
+            let next = *unsafe { table.get_unchecked(state as usize * 128 + byte as usize) };
+            if next == DEAD {
+                return false;
+            }
+            state = next;
+            if self.is_accept(state) {
+                return true;
+            }
+            at += 1;
+        }
+
+        false
     }
 
     #[inline]
@@ -299,9 +405,7 @@ impl Dfa {
                 if accel.is_enabled() {
                     if let Some((class, next_state)) = accel.class_loop {
                         let start = at;
-                        while at < len && class.matches(bytes[at] as char) {
-                            at += 1;
-                        }
+                        at = class.skip_bytes(bytes, at);
                         if at >= len {
                             state = next_state;
                             break;
@@ -312,9 +416,7 @@ impl Dfa {
                         }
                     } else if let Some(loop_byte) = accel.loop_byte {
                         let start = at;
-                        while at < len && bytes[at] == loop_byte {
-                            at += 1;
-                        }
+                        at = crate::charclass::skip_equal_bytes(bytes, at, loop_byte);
                         if at >= len {
                             break;
                         }
@@ -356,27 +458,64 @@ fn detect_class_loop(
     ] {
         let mut target = None;
         let mut matched = false;
+        let mut ok = true;
         for byte in 0u8..128 {
-            if !class.matches(byte as char) {
-                continue;
-            }
-            matched = true;
             let next = table[base + byte as usize];
-            if next == DEAD {
-                target = None;
-                break;
-            }
-            match target {
-                None => target = Some(next),
-                Some(existing) if existing == next => {}
-                _ => {
-                    target = None;
+            if class.matches(byte as char) {
+                matched = true;
+                if next == DEAD {
+                    ok = false;
                     break;
                 }
+                match target {
+                    None => target = Some(next),
+                    Some(existing) if existing == next => {}
+                    _ => {
+                        ok = false;
+                        break;
+                    }
+                }
+            } else if next != DEAD {
+                ok = false;
+                break;
             }
         }
-        if matched && let Some(next) = target {
+        if ok
+            && matched
+            && let Some(next) = target
+        {
             return Some((class, next));
+        }
+    }
+    None
+}
+
+fn detect_class_find(state: usize, table: &[DfaStateID]) -> Option<crate::charclass::CharClass> {
+    let base = state * 128;
+    let self_id = state as DfaStateID;
+    for class in [
+        crate::charclass::CharClass::Digit,
+        crate::charclass::CharClass::Word,
+        crate::charclass::CharClass::Space,
+        crate::charclass::CharClass::Any,
+    ] {
+        let mut any_exit = false;
+        let mut ok = true;
+        for byte in 0u8..128 {
+            let next = table[base + byte as usize];
+            if class.matches(byte as char) {
+                if next == DEAD || next == self_id {
+                    ok = false;
+                    break;
+                }
+                any_exit = true;
+            } else if next != self_id && next != DEAD {
+                ok = false;
+                break;
+            }
+        }
+        if ok && any_exit {
+            return Some(class);
         }
     }
     None
@@ -410,37 +549,40 @@ fn build_accel(state: usize, table: &[DfaStateID]) -> Accel {
         None
     };
 
-    let mut unique_exits = Vec::new();
-    for byte in exit_bytes {
-        let next = table[base + byte as usize];
-        if !unique_exits.iter().any(|&(_, id)| id == next) {
-            unique_exits.push((byte, next));
-        }
-    }
+    let class_find = if loop_byte.is_none() && class_loop.is_none() {
+        detect_class_find(state, table)
+    } else {
+        None
+    };
 
-    if unique_exits.len() > 3 {
-        return Accel {
-            loop_byte,
-            class_loop,
-            needles: [0; 3],
-            needle_len: 0,
-        };
-    }
-
-    if loop_byte.is_none() && class_loop.is_none() && unique_exits.is_empty() {
+    if loop_byte.is_none() && class_loop.is_none() && class_find.is_none() && exit_bytes.is_empty()
+    {
         return Accel::default();
     }
 
     let mut needles = [0u8; 3];
-    for (i, &(byte, _)) in unique_exits.iter().enumerate() {
-        needles[i] = byte;
+    let mut needle_len = 0u8;
+    let mut exit_mask = 0u128;
+    if class_loop.is_none() && class_find.is_none() {
+        if exit_bytes.len() <= 3 {
+            for (i, &byte) in exit_bytes.iter().enumerate() {
+                needles[i] = byte;
+            }
+            needle_len = exit_bytes.len() as u8;
+        } else {
+            for &byte in &exit_bytes {
+                exit_mask |= 1u128 << byte;
+            }
+        }
     }
 
     Accel {
         loop_byte,
         class_loop,
+        class_find,
         needles,
-        needle_len: unique_exits.len() as u8,
+        needle_len,
+        exit_mask,
     }
 }
 
@@ -596,5 +738,75 @@ mod tests {
         assert!(saw_loop);
         assert!(dfa.is_match(""));
         assert!(dfa.is_match(&"b".repeat(1000)));
+    }
+
+    fn unanchored_dfa_from_pattern(pattern: &str) -> Dfa {
+        let mut lexer = crate::lexer::Lexer::new(pattern);
+        let mut parser = crate::parser::Parser::new(&mut lexer);
+        let ast = parser.parse().unwrap();
+        let mut state = crate::automaton::nfa::NfaState::new();
+        let nfa = crate::automaton::nfa::Nfa::new_from_node(ast, &mut state).unwrap();
+        Dfa::from_nfa(&nfa.with_unanchored_start(&mut state))
+    }
+
+    #[test]
+    fn partial_literal_in_haystack() {
+        let dfa = unanchored_dfa_from_pattern("abc");
+        assert!(dfa.find_accept("xyzabcdef"));
+        assert!(dfa.find_accept("abc"));
+        assert!(dfa.find_accept("ababc"));
+        assert!(!dfa.find_accept("ab"));
+        assert!(!dfa.find_accept("xyz"));
+        assert!(dfa.find_accept("aaaabc"));
+        assert!(dfa.find_accept("bar\nfooabc"));
+    }
+
+    #[test]
+    fn partial_alternation_overlap() {
+        let dfa = unanchored_dfa_from_pattern("a+b|ac");
+        assert!(dfa.find_accept("aaac"));
+        assert!(dfa.find_accept("xxaaabxx"));
+        assert!(!dfa.find_accept("aaa"));
+        assert!(dfa.find_accept("yac"));
+    }
+
+    #[test]
+    fn partial_empty_match() {
+        let dfa = unanchored_dfa_from_pattern("a*");
+        assert!(dfa.find_accept("xyz"));
+        assert!(dfa.find_accept(""));
+        assert!(dfa.find_accept("aaa"));
+    }
+
+    #[test]
+    fn partial_digit_class() {
+        let dfa = unanchored_dfa_from_pattern(r"\d+");
+        assert!(dfa.find_accept("age: 42 years"));
+        assert!(!dfa.find_accept("no digits"));
+        assert!(dfa.find_accept("0"));
+        let mut saw_find = false;
+        for state in 0..dfa.state_count {
+            if dfa.accels[state].class_find == Some(crate::charclass::CharClass::Digit) {
+                saw_find = true;
+            }
+        }
+        assert!(saw_find);
+    }
+
+    #[test]
+    fn partial_start_needles() {
+        let dfa = unanchored_dfa_from_pattern("(p(erl|ython|hp)|ruby)");
+        assert!(dfa.find_accept("I write python code"));
+        assert!(dfa.find_accept("ruby"));
+        assert!(!dfa.find_accept("I write rust code"));
+        let start_accel = dfa.accels[dfa.start() as usize];
+        assert!(start_accel.needle_len >= 1);
+    }
+
+    #[test]
+    fn partial_a_plus_b_long() {
+        let dfa = unanchored_dfa_from_pattern("a+b");
+        assert!(!dfa.find_accept(&"a".repeat(10_000)));
+        assert!(dfa.find_accept(&format!("xx{}b", "a".repeat(10_000))));
     }
 }
