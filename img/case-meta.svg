@@ -7,25 +7,25 @@
 <line class="axis" x1="170" y1="316" x2="646" y2="316"/>
 <line class="axis" x1="170" y1="56" x2="170" y2="316"/>
 <line class="tick" x1="170.0" y1="56" x2="170.0" y2="316"/>
-<text class="tick-label" x="170.0" y="334" text-anchor="middle">31.0 ns</text>
+<text class="tick-label" x="170.0" y="334" text-anchor="middle">24.6 ns</text>
 <line class="tick" x1="289.0" y1="56" x2="289.0" y2="316"/>
-<text class="tick-label" x="289.0" y="334" text-anchor="middle">68.4 ns</text>
+<text class="tick-label" x="289.0" y="334" text-anchor="middle">55.6 ns</text>
 <line class="tick" x1="408.0" y1="56" x2="408.0" y2="316"/>
-<text class="tick-label" x="408.0" y="334" text-anchor="middle">151.1 ns</text>
+<text class="tick-label" x="408.0" y="334" text-anchor="middle">126.0 ns</text>
 <line class="tick" x1="527.0" y1="56" x2="527.0" y2="316"/>
-<text class="tick-label" x="527.0" y="334" text-anchor="middle">333.8 ns</text>
+<text class="tick-label" x="527.0" y="334" text-anchor="middle">285.4 ns</text>
 <line class="tick" x1="646.0" y1="56" x2="646.0" y2="316"/>
-<text class="tick-label" x="646.0" y="334" text-anchor="middle">737.3 ns</text>
+<text class="tick-label" x="646.0" y="334" text-anchor="middle">646.5 ns</text>
 <rect x="170.0" y="56.0" width="2.0" height="51.5" fill="#4c78a8" rx="4"/>
 <text class="label" x="160" y="85.75" text-anchor="end">rustegex DFA</text>
-<text class="value" x="180.0" y="85.75">31.0 ns</text>
-<rect x="170.0" y="125.5" width="183.0" height="51.5" fill="#59a14f" rx="4"/>
+<text class="value" x="180.0" y="85.75">24.6 ns</text>
+<rect x="170.0" y="125.5" width="201.8" height="51.5" fill="#59a14f" rx="4"/>
 <text class="label" x="160" y="155.25" text-anchor="end">rustegex VM</text>
-<text class="value" x="361.0" y="155.25">104.7 ns</text>
+<text class="value" x="379.8" y="155.25">98.3 ns</text>
 <rect x="170.0" y="195.0" width="476.0" height="51.5" fill="#f28e2b" rx="4"/>
 <text class="label" x="160" y="224.75" text-anchor="end">(rustegex Derivative)</text>
-<text class="value" x="654.0" y="224.75">737.3 ns</text>
-<rect x="170.0" y="264.5" width="156.5" height="51.5" fill="#b279a2" rx="4"/>
+<text class="value" x="654.0" y="224.75">646.5 ns</text>
+<rect x="170.0" y="264.5" width="179.2" height="51.5" fill="#b279a2" rx="4"/>
 <text class="label" x="160" y="294.25" text-anchor="end">regex crate</text>
-<text class="value" x="334.5" y="294.25">87.8 ns</text>
+<text class="value" x="357.2" y="294.25">84.2 ns</text>
 </svg>

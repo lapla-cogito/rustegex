@@ -21,3 +21,7 @@ regex = "1.12.4"
 [[bench]]
 name = "benchmark"
 harness = false
+
+[profile.release]
+lto = "fat"
+codegen-units = 1

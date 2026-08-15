@@ -8,25 +8,25 @@
 <line class="axis" x1="170" y1="334" x2="639" y2="334"/>
 <line class="axis" x1="170" y1="74" x2="170" y2="334"/>
 <line class="tick" x1="170.0" y1="74" x2="170.0" y2="334"/>
-<text class="tick-label" x="170.0" y="352" text-anchor="middle">9.6 ns</text>
+<text class="tick-label" x="170.0" y="352" text-anchor="middle">8.6 ns</text>
 <line class="tick" x1="287.2" y1="74" x2="287.2" y2="334"/>
-<text class="tick-label" x="287.2" y="352" text-anchor="middle">307.9 ns</text>
+<text class="tick-label" x="287.2" y="352" text-anchor="middle">280.4 ns</text>
 <line class="tick" x1="404.5" y1="74" x2="404.5" y2="334"/>
-<text class="tick-label" x="404.5" y="352" text-anchor="middle">9.85 µs</text>
+<text class="tick-label" x="404.5" y="352" text-anchor="middle">9.12 µs</text>
 <line class="tick" x1="521.8" y1="74" x2="521.8" y2="334"/>
-<text class="tick-label" x="521.8" y="352" text-anchor="middle">314.86 µs</text>
+<text class="tick-label" x="521.8" y="352" text-anchor="middle">296.73 µs</text>
 <line class="tick" x1="639.0" y1="74" x2="639.0" y2="334"/>
-<text class="tick-label" x="639.0" y="352" text-anchor="middle">10.07 ms</text>
-<rect x="170.0" y="74.0" width="326.0" height="51.5" fill="#4c78a8" rx="4"/>
+<text class="tick-label" x="639.0" y="352" text-anchor="middle">9.65 ms</text>
+<rect x="170.0" y="74.0" width="324.6" height="51.5" fill="#4c78a8" rx="4"/>
 <text class="label" x="160" y="103.75" text-anchor="end">rustegex DFA</text>
-<text class="value" x="504.0" y="103.75">147.13 µs</text>
-<rect x="170.0" y="143.5" width="425.5" height="51.5" fill="#59a14f" rx="4"/>
+<text class="value" x="502.6" y="103.75">132.60 µs</text>
+<rect x="170.0" y="143.5" width="424.3" height="51.5" fill="#59a14f" rx="4"/>
 <text class="label" x="160" y="173.25" text-anchor="end">rustegex VM</text>
-<text class="value" x="603.5" y="173.25">2.78 ms</text>
+<text class="value" x="602.3" y="173.25">2.56 ms</text>
 <rect x="170.0" y="213.0" width="469.0" height="51.5" fill="#f28e2b" rx="4"/>
 <text class="label" x="160" y="242.75" text-anchor="end">(rustegex Derivative)</text>
-<text class="value" x="647.0" y="242.75">10.07 ms</text>
+<text class="value" x="647.0" y="242.75">9.65 ms</text>
 <rect x="170.0" y="282.5" width="2.0" height="51.5" fill="#b279a2" rx="4"/>
 <text class="label" x="160" y="312.25" text-anchor="end">regex crate</text>
-<text class="value" x="180.0" y="312.25">9.6 ns</text>
+<text class="value" x="180.0" y="312.25">8.6 ns</text>
 </svg>

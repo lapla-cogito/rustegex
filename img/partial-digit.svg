@@ -8,22 +8,22 @@
 <line class="axis" x1="170" y1="334" x2="639" y2="334"/>
 <line class="axis" x1="170" y1="74" x2="170" y2="334"/>
 <line class="tick" x1="170.0" y1="74" x2="170.0" y2="334"/>
-<text class="tick-label" x="170.0" y="352" text-anchor="middle">28.25 µs</text>
+<text class="tick-label" x="170.0" y="352" text-anchor="middle">26.40 µs</text>
 <line class="tick" x1="287.2" y1="74" x2="287.2" y2="334"/>
-<text class="tick-label" x="287.2" y="352" text-anchor="middle">52.17 µs</text>
+<text class="tick-label" x="287.2" y="352" text-anchor="middle">48.85 µs</text>
 <line class="tick" x1="404.5" y1="74" x2="404.5" y2="334"/>
-<text class="tick-label" x="404.5" y="352" text-anchor="middle">96.36 µs</text>
+<text class="tick-label" x="404.5" y="352" text-anchor="middle">90.39 µs</text>
 <line class="tick" x1="521.8" y1="74" x2="521.8" y2="334"/>
-<text class="tick-label" x="521.8" y="352" text-anchor="middle">177.96 µs</text>
+<text class="tick-label" x="521.8" y="352" text-anchor="middle">167.28 µs</text>
 <line class="tick" x1="639.0" y1="74" x2="639.0" y2="334"/>
-<text class="tick-label" x="639.0" y="352" text-anchor="middle">328.66 µs</text>
+<text class="tick-label" x="639.0" y="352" text-anchor="middle">309.55 µs</text>
 <rect x="170.0" y="74.0" width="2.0" height="74.7" fill="#4c78a8" rx="4"/>
 <text class="label" x="160" y="115.33333333333334" text-anchor="end">rustegex DFA</text>
-<text class="value" x="180.0" y="115.33333333333334">28.25 µs</text>
+<text class="value" x="180.0" y="115.33333333333334">26.40 µs</text>
 <rect x="170.0" y="166.7" width="469.0" height="74.7" fill="#59a14f" rx="4"/>
 <text class="label" x="160" y="208.00000000000003" text-anchor="end">rustegex VM</text>
-<text class="value" x="647.0" y="208.00000000000003">328.66 µs</text>
-<rect x="170.0" y="259.3" width="410.7" height="74.7" fill="#b279a2" rx="4"/>
+<text class="value" x="647.0" y="208.00000000000003">309.55 µs</text>
+<rect x="170.0" y="259.3" width="411.1" height="74.7" fill="#b279a2" rx="4"/>
 <text class="label" x="160" y="300.6666666666667" text-anchor="end">regex crate</text>
-<text class="value" x="588.7" y="300.6666666666667">242.23 µs</text>
+<text class="value" x="589.1" y="300.6666666666667">228.37 µs</text>
 </svg>
