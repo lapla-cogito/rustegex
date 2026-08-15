@@ -17,13 +17,13 @@
 <text class="tick-label" x="532.2" y="352" text-anchor="middle">3.00 µs</text>
 <line class="tick" x1="653.0" y1="74" x2="653.0" y2="334"/>
 <text class="tick-label" x="653.0" y="352" text-anchor="middle">4.00 µs</text>
-<rect x="170.0" y="74.0" width="462.0" height="74.7" fill="#4c78a8" rx="4"/>
+<rect x="170.0" y="74.0" width="383.4" height="74.7" fill="#4c78a8" rx="4"/>
 <text class="label" x="160" y="115.33333333333334" text-anchor="end">rustegex DFA</text>
-<text class="value" x="640.0" y="115.33333333333334">3.83 µs</text>
-<rect x="170.0" y="166.7" width="450.9" height="74.7" fill="#59a14f" rx="4"/>
+<text class="value" x="561.4" y="115.33333333333334">3.17 µs</text>
+<rect x="170.0" y="166.7" width="381.8" height="74.7" fill="#59a14f" rx="4"/>
 <text class="label" x="160" y="208.00000000000003" text-anchor="end">rustegex VM</text>
-<text class="value" x="628.9" y="208.00000000000003">3.73 µs</text>
-<rect x="170.0" y="259.3" width="463.0" height="74.7" fill="#b279a2" rx="4"/>
+<text class="value" x="559.8" y="208.00000000000003">3.16 µs</text>
+<rect x="170.0" y="259.3" width="381.0" height="74.7" fill="#b279a2" rx="4"/>
 <text class="label" x="160" y="300.6666666666667" text-anchor="end">regex crate</text>
-<text class="value" x="641.0" y="300.6666666666667">3.83 µs</text>
+<text class="value" x="559.0" y="300.6666666666667">3.15 µs</text>
 </svg>
